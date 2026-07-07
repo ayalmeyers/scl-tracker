@@ -24,7 +24,7 @@ async function getGraphToken() {
   const pca = await getMSAL();
   await pca.initialize();
   const accounts = pca.getAllAccounts();
-  const request = { scopes: ['Files.Read.All', 'User.Read'] };
+  const request = { scopes: ['Files.ReadWrite.All', 'User.Read'] };
   if (accounts.length > 0) {
     try {
       const result = await pca.acquireTokenSilent({ ...request, account: accounts[0] });
@@ -254,7 +254,7 @@ function App() {
   const [showKey, setShowKey] = useState(!recall('scl_key',''));
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
-  const [webhookUrl, setWebhookUrl] = useState(() => recall('scl_webhook',''));
+  // Graph write replaces webhook — no webhook URL needed
   const [queue, setQueue] = useState(() => recall('scl_queue',[]));
   const [log, setLog] = useState(() => recall('scl_log',[]));
   const [writeStatus, setWriteStatus] = useState({});
@@ -269,7 +269,7 @@ function App() {
   useEffect(() => { persist('scl_queue', queue); }, [queue]);
   useEffect(() => { persist('scl_log', log); }, [log]);
   useEffect(() => { persist('scl_key', apiKey); }, [apiKey]);
-  useEffect(() => { persist('scl_webhook', webhookUrl); }, [webhookUrl]);
+
 
   const handleAnalyze = useCallback(async () => {
     if (!apiKey.trim()) { setErr('Enter your Anthropic API key first (⚙ above).'); return; }
@@ -302,6 +302,84 @@ function App() {
     setLoading(false);
   }, [apiKey]);
 
+
+async function writeToExcel(entries, token) {
+  // Find the file first (reuse same search as roster fetch)
+  const searchRes = await fetch(
+    "https://graph.microsoft.com/v1.0/me/drive/root/search(q='AUTOMATION TEST - 260202 Rev Sheet')?$select=id,name&$top=5",
+    { headers: { Authorization: 'Bearer ' + token } }
+  );
+  const searchData = await searchRes.json();
+  const file = (searchData.value || []).find(f => f.name && f.name.includes('260202'));
+  if (!file) throw new Error('Could not find Excel file on SharePoint.');
+
+  // Get column headers from tblRevenue to find right column index
+  const hdrsRes = await fetch(
+    'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblRevenue/columns?$select=name,index',
+    { headers: { Authorization: 'Bearer ' + token } }
+  );
+  const hdrsData = await hdrsRes.json();
+  const colMap = {};
+  (hdrsData.value || []).forEach(c => { colMap[c.name] = c.index; });
+
+  // Get all rows to find the right one by EngagementID
+  const rowsRes = await fetch(
+    'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblRevenue/rows',
+    { headers: { Authorization: 'Bearer ' + token } }
+  );
+  const rowsData = await rowsRes.json();
+  const rows = rowsData.value || [];
+
+  const eidCol = colMap['EngagementID'];
+  const results = [];
+
+  for (const entry of entries) {
+    // Find the row index for this engagement
+    const rowIdx = rows.findIndex(r => String(r.values[0][eidCol]) === entry.id);
+    if (rowIdx === -1) { results.push({ id: entry.id, ok: false, err: 'Row not found' }); continue; }
+
+    const colIdx = entry.field === 'Status' ? colMap['Status'] : colMap[entry.field];
+    if (colIdx === undefined) { results.push({ id: entry.id, ok: false, err: 'Column not found: ' + entry.field }); continue; }
+
+    // Patch the specific cell using row address
+    const patchRes = await fetch(
+      'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblRevenue/rows/itemAt(index=' + rowIdx + ')',
+      {
+        method: 'PATCH',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          values: [rows[rowIdx].values[0].map((v, i) => i === colIdx ? entry.to : v)]
+        })
+      }
+    );
+    const ok = patchRes.ok;
+    results.push({ id: entry.id, field: entry.field, ok });
+
+    // Also write to tblChangeLog if it exists
+    try {
+      await fetch(
+        'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblChangeLog/rows',
+        {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            values: [[
+              entry.date, entry.time,
+              entry.client + ' / ' + entry.engagement + ' — ' + entry.field + ' updated',
+              entry.field, String(entry.from), String(entry.to),
+              entry.edited ? 'Reviewed & edited' : 'Approved as suggested',
+              'EngagementID: ' + entry.id + ' | Confidence: ' + entry.confidence,
+              entry.emailSubject || '', entry.emailFrom || '',
+              entry.reasoning || '', entry.excerpt || '', entry.confidence || ''
+            ]]
+          })
+        }
+      );
+    } catch(_) {} // changelog write failure is non-fatal
+  }
+  return results;
+}
+
   async function applyItem(item, edited, wasEdited) {
     const now = new Date();
     const date=now.toISOString().slice(0,10), time=now.toTimeString().slice(0,5);
@@ -316,35 +394,20 @@ function App() {
       entries.push({date,time,id:edited.matched_id,client:eng?.client||'',engagement:eng?.engagement||'',field:edited.month,from:curMonth??'(blank)',to:Number(edited.amount),confidence:item.confidence,edited:wasEdited,emailSubject:item.emailSubject||'',emailFrom:item.emailFrom||'',reasoning:item.reasoning||'',excerpt:item.excerpt||''});
     if (!entries.length) { setQueue(prev=>prev.filter(x=>x.qid!==item.qid)); return; }
 
-    // fire Power Automate webhook if configured
-    if (webhookUrl.trim()) {
-      setWriteStatus(prev=>({...prev,[item.qid]:'writing'}));
-      try {
-        await Promise.all(entries.map(entry =>
-          fetch(webhookUrl, {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({
-              engagement_id: entry.id,
-              field: entry.field,          // 'Status' or a month name e.g. 'May'
-              value: entry.to,             // new value
-              old_value: entry.from,
-              client: entry.client,
-              engagement: entry.engagement,
-              confidence: entry.confidence,
-              edited_by_user: entry.edited,
-              applied_at: date+'T'+time,
-              email_subject: entry.emailSubject||'',
-              email_from: entry.emailFrom||'',
-              reasoning: entry.reasoning||'',
-              email_excerpt: entry.excerpt||'',
-            })
-          })
-        ));
-        setWriteStatus(prev=>({...prev,[item.qid]:'done'}));
-      } catch(_) {
-        setWriteStatus(prev=>({...prev,[item.qid]:'error'}));
+    // write directly to Excel via Microsoft Graph
+    setWriteStatus(prev=>({...prev,[item.qid]:'writing'}));
+    try {
+      const token = await getGraphToken();
+      const results = await writeToExcel(entries, token);
+      const allOk = results.every(r => r.ok);
+      setWriteStatus(prev=>({...prev,[item.qid]: allOk ? 'done' : 'error'}));
+      if (!allOk) {
+        const failed = results.filter(r => !r.ok).map(r => r.err||r.field).join(', ');
+        setErr('Some updates failed: ' + failed);
       }
+    } catch(writeErr) {
+      setWriteStatus(prev=>({...prev,[item.qid]:'error'}));
+      setErr('Excel write failed: ' + writeErr.message);
     }
 
     setLog(prev=>[...entries,...prev]);
@@ -369,13 +432,7 @@ function App() {
           type:'password', placeholder:'sk-ant-…',
           style:{width:'100%',border:'1px solid '+LINE,borderRadius:6,padding:'5px 8px',fontSize:12,outline:'none',marginBottom:8,boxSizing:'border-box'}
         }),
-        e('div',{style:{fontSize:10,color:'#94A3B8',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:3}},'Power Automate webhook URL'),
-        e('input', {
-          value:webhookUrl, onChange:ev=>setWebhookUrl(ev.target.value),
-          type:'text', placeholder:'https://prod-xx.westus.logic.azure.com/…',
-          style:{width:'100%',border:'1px solid '+(webhookUrl?'#BBF7D0':LINE),borderRadius:6,padding:'5px 8px',fontSize:11,outline:'none',boxSizing:'border-box'}
-        }),
-        e('div',{style:{fontSize:10,color:'#94A3B8',marginTop:3}}, webhookUrl ? '✓ Excel will update automatically on Apply' : 'Leave blank to log only — add later to write to Excel')
+        e('div',{style:{fontSize:10,color:'#94A3B8',marginTop:3}}, '✓ Writes directly to Excel on SharePoint via Microsoft Graph')
       ),
       e('button', {
         onClick:handleAnalyze, disabled:loading||!ready,
