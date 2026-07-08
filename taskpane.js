@@ -1,14 +1,11 @@
-// Wrap everything in a bootstrapper to prevent CDN script-loading race conditions
 function bootstrapSCLAddIn() {
   try {
     const { useState, useEffect, useCallback, useMemo } = React;
 
-    // GLOBAL CONFIGS & CONSTANTS
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sept','Oct','Nov','Dec'];
     const STATUSES = ['Paid','Part Paid','Invoiced','SOW/Pending','On Hold','Other'];
     const INK='#1F3864', LINE='#E4E7EE', GO='#15803D', WARN='#B45309', DANGER='#B91C1C', BG='#F6F7F9';
 
-    // Live Roster cache
     let ROSTER = [];
 
     const MSAL_CONFIG = {
@@ -92,27 +89,27 @@ function bootstrapSCLAddIn() {
     const persist = (k,v) => {try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}};
     const recall = (k,fb) => {try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch(_){return fb;}};
 
-    // 🌟 Variable Assignment style fixes block hoisting exceptions
+    // 🌟 Modified to call your internal Vercel API proxy route, wiping out CORS errors
     const callClaude = async (emailText, apiKey) => {
       const rosterBlock = ROSTER.map(r =>
         r.id+'|'+r.client+'|'+r.engagement+'|'+r.owner+'|'+(r.status||'(blank)')
       ).join('\n');
       const sys = 'You read one email and propose a single update to a revenue tracker. Match the email to exactly one engagement from the roster. Client names may differ slightly. Engagements are often a person name. Match on meaning.\n\nReturn ONE json object, no markdown:\n{"relevant":boolean,"matched_id":string|null,"match_confidence":"high"|"medium"|"low","status_change":{"to":string}|null,"amount_change":{"month":string,"amount":number}|null,"reasoning":string,"email_excerpt":string}\n\n"high" only when one row is a clear fit. Never invent an ID. Ambiguous = null + low.';
       const user = 'ROSTER:\n'+rosterBlock+'\n\nEMAIL:\n"""\n'+emailText+'\n"""';
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      
+      const res = await fetch('/api/claude', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 800, system: sys, messages: [{ role: 'user', content: user }] })
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error.message);
+      if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
       let txt = (data.content||[]).filter(b => b.type==='text').map(b => b.text).join('');
       txt = txt.replace(/```json|```/g,'').trim();
       const s = txt.indexOf('{'), e = txt.lastIndexOf('}');
       return JSON.parse(txt.slice(s, e+1));
     };
 
-    // Force callClaude globally available in the window scope
     window.callClaude = callClaude;
 
     const getEmailText = () => {
@@ -280,11 +277,12 @@ function bootstrapSCLAddIn() {
             if (fresh.length > 0) { ROSTER.length = 0; fresh.forEach(r => ROSTER.push(r)); }
             setErr(null);
           } catch(fetchErr) {
-            setErr('SharePoint: ' + fetchErr.message + ' — using cached roster.');
+            // 🌟 Safety fix: stringify errors that lack standard message attributes
+            const msg = fetchErr.message || (typeof fetchErr === 'object' ? JSON.stringify(fetchErr) : String(fetchErr));
+            setErr('SharePoint setup message: ' + msg + ' — using cached roster context.');
           }
-          const emailText = await getEmailText();
           
-          // Invoke from global context
+          const emailText = await getEmailText();
           const r = await window.callClaude(emailText, apiKey);
           
           if (!r.relevant) { setErr("No tracker update found in this email."); setLoading(false); return; }
@@ -299,7 +297,10 @@ function bootstrapSCLAddIn() {
             emailFrom:emailText.match(/^From: (.+)/m)?.[1]||'',
           }, ...prev]);
           setTab('suggest');
-        } catch(ex) { setErr(ex.message||'Analysis failed. Check your API key.'); }
+        } catch(ex) { 
+          const finalMsg = ex.message || (typeof ex === 'object' ? JSON.stringify(ex) : String(ex));
+          setErr('Analysis stop: ' + finalMsg); 
+        }
         setLoading(false);
       }, [apiKey]);
 
@@ -469,7 +470,6 @@ function bootstrapSCLAddIn() {
       );
     };
 
-    // Mount application safely
     ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
 
   } catch (bootErr) {
@@ -477,7 +477,6 @@ function bootstrapSCLAddIn() {
   }
 }
 
-// Fallback visual logger to display internal errors inside Outlook directly
 function showFatalCrashMessage(err) {
   const root = document.getElementById('root');
   if (root) {
@@ -491,7 +490,6 @@ function showFatalCrashMessage(err) {
   }
 }
 
-// Listen for Office initialization signal, then trigger bootstrap sequence safely
 Office.onReady((info) => {
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     bootstrapSCLAddIn();
