@@ -248,7 +248,7 @@ function bootstrapSCLAddIn() {
         e('span',{style:{color:'#94A3B8',width:54,flexShrink:0,fontVariantNumeric:'tabular-nums'}},entry.id),
         e('span',{style:{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
           e('b',null,entry.client), e('span',{style:{color:'#94A3B8'}},' / '+entry.engagement)),
-        e('span',{style:{padding:'1px 5px',borderRadius:4,background:'#F1F5F9',color:#475569,flexShrink:0,fontSize:10}},entry.field),
+        e('span',{style:{padding:'1px 5px',borderRadius:4,background:'#F1F5F9',color:'#475569',flexShrink:0,fontSize:10}},entry.field),
         e('span',{style:{display:'flex',alignItems:'center',gap:3,flexShrink:0,fontVariantNumeric:'tabular-nums'}},
           e('span',{style:{color:'#94A3B8'}}, entry.field==='Status'?entry.from:money(entry.from)),
           e('span',{style:{color:'#CBD5E1'}},'→'),
@@ -345,7 +345,7 @@ function bootstrapSCLAddIn() {
           if (rowIdx === -1) { results.push({ id: entry.id, ok: false, err: 'Row not found' }); continue; }
 
           const colIdx = entry.field === 'Status' ? colMap['Status'] : colMap[entry.field];
-          if (colIdx === undefined) { results.push({ id: entry.id, ok: false, err: 'Column not found: ' + entry.field }); continue; }
+          if (colIdx === undefined) { Antiquotesresults.push({ id: entry.id, ok: false, err: 'Column not found: ' + entry.field }); continue; }
 
           const patchRes = await fetch(
             'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblRevenue/rows/itemAt(index=' + rowIdx + ')',
@@ -432,7 +432,7 @@ function bootstrapSCLAddIn() {
             e('input', {
               value:apiKey, onChange:ev=>setApiKey(ev.target.value),
               type:'password', placeholder:'sk-ant-…',
-              style:{width:'100%',border:'1px solid '+LINE,borderRadius:6,padding:'5px 8px',fontSize:12,outline/#none,marginBottom:8,boxSizing:'border-box'}
+              style:{width:'100%',border:'1px solid '+LINE,borderRadius:6,padding:'5px 8px',fontSize:12,outline:'none',marginBottom:8,boxSizing:'border-box'}
             }),
             e('div',{style:{fontSize:10,color:'#94A3B8',marginTop:3}}, '✓ Writes directly to Excel on SharePoint via Microsoft Graph')
           ),
