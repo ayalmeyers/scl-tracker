@@ -51,7 +51,6 @@ function bootstrapSCLAddIn() {
     const fetchRosterFromSharePoint = async () => {
       const token = await getGraphToken();
       
-      // 🌟 REWRITTEN: Broad organization-wide search query locates files inside hidden shared libraries
       const searchRes = await fetch(
         "https://graph.microsoft.com/v1.0/search/query",
         {
@@ -79,20 +78,29 @@ function bootstrapSCLAddIn() {
       }
 
       const fileId = fileHit.resource.id;
-      // Extract the drive ID out of the search hit metadata payload context
       const driveId = fileHit.resource.parentReference?.driveId;
       
       if (!driveId) {
         throw new Error("Target file located, but parent library path details could not be extracted.");
       }
 
-      // 🌟 REWRITTEN: Points directly to the shared site drive instead of a personal /me/ endpoint
       const rowsRes = await fetch(
         `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/rows`,
         { headers: { Authorization: 'Bearer ' + token } }
       );
       const rowsData = await rowsRes.json();
-      if (rowsData.error) throw new Error('Could not read tblRevenue: ' + rowsData.error.message);
+      
+      // 🌟 DIAGNOSTIC UPGRADE: If tblRevenue triggers a 404, scan and return what tables actually exist!
+      if (rowsData.error) {
+        const structuralScanRes = await fetch(
+          `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables`,
+          { headers: { Authorization: 'Bearer ' + token } }
+        );
+        const structuralScanData = await structuralScanRes.json();
+        const existingTables = (structuralScanData.value || []).map(t => t.name).join(', ') || 'NONE DETECTED';
+        
+        throw new Error(`Table 'tblRevenue' not found inside the workbook. Tables actually detected inside this file: [${existingTables}]. In Excel, make sure your data range is formatted as a Table named exactly 'tblRevenue'.`);
+      }
 
       const hdrsRes = await fetch(
         `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/columns?$select=name,index`,
@@ -345,7 +353,6 @@ function bootstrapSCLAddIn() {
         setLoading(false);
       }, [apiKey]);
 
-      // Global workbook writing operations update to inherit multi-drive syntax
       const writeToExcel = async (entries, token) => {
         const searchRes = await fetch(
           "https://graph.microsoft.com/v1.0/search/query",
