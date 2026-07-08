@@ -84,48 +84,63 @@ function bootstrapSCLAddIn() {
         throw new Error("Target file located, but parent library path details could not be extracted.");
       }
 
-      const rowsRes = await fetch(
-        `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/rows`,
-        { headers: { Authorization: 'Bearer ' + token } }
-      );
-      const rowsData = await rowsRes.json();
-      
-      // 🌟 DIAGNOSTIC UPGRADE: If tblRevenue triggers a 404, scan and return what tables actually exist!
-      if (rowsData.error) {
-        const structuralScanRes = await fetch(
-          `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables`,
-          { headers: { Authorization: 'Bearer ' + token } }
-        );
-        const structuralScanData = await structuralScanRes.json();
-        const existingTables = (structuralScanData.value || []).map(t => t.name).join(', ') || 'NONE DETECTED';
-        
-        throw new Error(`Table 'tblRevenue' not found inside the workbook. Tables actually detected inside this file: [${existingTables}]. In Excel, make sure your data range is formatted as a Table named exactly 'tblRevenue'.`);
-      }
-
       const hdrsRes = await fetch(
         `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/columns?$select=name,index`,
         { headers: { Authorization: 'Bearer ' + token } }
       );
       const hdrsData = await hdrsRes.json();
+      
+      // 🌟 NEW: Build a case-insensitive, space-insensitive dictionary mapping system
       const colMap = {};
-      (hdrsData.value || []).forEach(c => { colMap[c.name] = c.index; });
+      const rawHeaders = [];
+      (hdrsData.value || []).forEach(c => { 
+        rawHeaders.push(c.name);
+        colMap[c.name] = c.index;
+        const normalizedKey = c.name.toLowerCase().replace(/[\s_\-]/g, '');
+        colMap[normalizedKey] = c.index;
+      });
+
+      // Extract indices using the robust fallback map keys
+      const idxId = colMap['EngagementID'] !== undefined ? colMap['EngagementID'] : colMap['engagementid'];
+      const idxClient = colMap['Client'] !== undefined ? colMap['Client'] : colMap['client'];
+      const idxEng = colMap['Engagement'] !== undefined ? colMap['Engagement'] : colMap['engagement'];
+      const idxOwner = colMap['Owner'] !== undefined ? colMap['Owner'] : colMap['owner'];
+      const idxStatus = colMap['Status'] !== undefined ? colMap['Status'] : colMap['status'];
+
+      if (idxId === undefined || idxClient === undefined || idxEng === undefined) {
+        throw new Error(`Critical table headers missing. Detected columns: [${rawHeaders.join(', ')}]. Ensure you have columns named 'EngagementID', 'Client', and 'Engagement'.`);
+      }
+
+      const rowsRes = await fetch(
+        `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/rows`,
+        { headers: { Authorization: 'Bearer ' + token } }
+      );
+      const rowsData = await rowsRes.json();
+      if (rowsData.error) throw new Error('Could not read tblRevenue: ' + rowsData.error.message);
 
       const roster = (rowsData.value || []).map(row => {
         const v = row.values[0];
         const monthData = {};
+        
         MONTHS.forEach(m => {
-          const val = colMap[m] !== undefined ? v[colMap[m]] : null;
+          const mIdx = colMap[m] !== undefined ? colMap[m] : colMap[m.toLowerCase()];
+          const val = mIdx !== undefined ? v[mIdx] : null;
           if (val !== null && val !== '' && val !== 0) monthData[m] = Number(val);
         });
+        
         return {
-          id: String(v[colMap['EngagementID']] || ''),
-          client: String(v[colMap['Client']] || ''),
-          engagement: String(v[colMap['Engagement']] || ''),
-          owner: String(v[colMap['Owner']] || ''),
-          status: String(v[colMap['Status']] || ''),
+          id: String(v[idxId] || ''),
+          client: String(v[idxClient] || ''),
+          engagement: String(v[idxEng] || ''),
+          owner: idxOwner !== undefined ? String(v[idxOwner] || '') : '',
+          status: idxStatus !== undefined ? String(v[idxStatus] || '') : '',
           months: monthData,
         };
-      }).filter(r => r.id.startsWith('ENG-'));
+      }).filter(r => r.id && r.id.trim() !== '' && r.id !== 'undefined'); // 🌟 REMOVED strict prefix requirement
+
+      if (roster.length === 0) {
+        throw new Error(`Rows read successfully, but 0 records parsed. Check that your ID column contains data.`);
+      }
 
       return roster;
     };
@@ -376,8 +391,16 @@ function bootstrapSCLAddIn() {
           { headers: { Authorization: 'Bearer ' + token } }
         );
         const hdrsData = await hdrsRes.json();
-        const colMap = {};
-        (hdrsData.value || []).forEach(c => { colMap[c.name] = c.index; });
+        
+        const localColMap = {};
+        (hdrsData.value || []).forEach(c => { 
+          localColMap[c.name] = c.index;
+          const clean = c.name.toLowerCase().replace(/[\s_\-]/g, '');
+          localColMap[clean] = c.index;
+        });
+
+        const targetIdKey = localColMap['EngagementID'] !== undefined ? 'EngagementID' : 'engagementid';
+        const targetStatusKey = localColMap['Status'] !== undefined ? 'Status' : 'status';
 
         const rowsRes = await fetch(
           `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/rows`,
@@ -386,14 +409,14 @@ function bootstrapSCLAddIn() {
         const rowsData = await rowsRes.json();
         const rows = rowsData.value || [];
 
-        const eidCol = colMap['EngagementID'];
+        const eidCol = localColMap[targetIdKey];
         const results = [];
 
         for (const entry of entries) {
           const rowIdx = rows.findIndex(r => String(r.values[0][eidCol]) === entry.id);
           if (rowIdx === -1) { results.push({ id: entry.id, ok: false, err: 'Row not found' }); continue; }
 
-          const colIdx = entry.field === 'Status' ? colMap['Status'] : colMap[entry.field];
+          const colIdx = entry.field === 'Status' ? localColMap[targetStatusKey] : (localColMap[entry.field] !== undefined ? localColMap[entry.field] : localColMap[entry.field.toLowerCase()]);
           if (colIdx === undefined) { results.push({ id: entry.id, ok: false, err: 'Column not found: ' + entry.field }); continue; }
 
           const patchRes = await fetch(
