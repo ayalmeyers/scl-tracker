@@ -11,7 +11,6 @@ function bootstrapSCLAddIn() {
     // Live Roster cache
     let ROSTER = [];
 
-    // 🌟 FIXED: Wrapped configuration values inside the required 'auth' object block
     const MSAL_CONFIG = {
       auth: {
         clientId: 'eb6e6717-7f19-4491-b78a-7aa4f72d81f0',
@@ -38,7 +37,7 @@ function bootstrapSCLAddIn() {
       const pca = await getMSAL();
       await pca.initialize();
       const accounts = pca.getAllAccounts();
-      const request = { scopes: ['Files.ReadWrite.All', 'User.Read'] };
+      const request = { scopes: ['Files.ReadWrite.All', 'User.Read', 'Sites.Read.All'] };
       if (accounts.length > 0) {
         try {
           const result = await pca.acquireTokenSilent({ ...request, account: accounts[0] });
@@ -51,23 +50,52 @@ function bootstrapSCLAddIn() {
 
     const fetchRosterFromSharePoint = async () => {
       const token = await getGraphToken();
+      
+      // 🌟 REWRITTEN: Broad organization-wide search query locates files inside hidden shared libraries
       const searchRes = await fetch(
-        "https://graph.microsoft.com/v1.0/me/drive/root/search(q='AUTOMATION TEST - 260202 Rev Sheet')?$select=id,name,webUrl&$top=5",
-        { headers: { Authorization: 'Bearer ' + token } }
+        "https://graph.microsoft.com/v1.0/search/query",
+        {
+          method: 'POST',
+          headers: { 
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            requests: [{
+              entityTypes: ['driveItem'],
+              query: { queryString: '"AUTOMATION TEST - 260202 Rev Sheet"' },
+              size: 5
+            }]
+          })
+        }
       );
+      
       const searchData = await searchRes.json();
-      const file = (searchData.value || []).find(f => f.name && f.name.includes('260202'));
-      if (!file) throw new Error('Could not find the Excel file. Make sure you have access to it on SharePoint.');
+      const hits = searchData.value?.[0]?.hitsContainers?.[0]?.hits || [];
+      const fileHit = hits.find(h => h.resource?.name && h.resource.name.includes('260202'));
+      
+      if (!fileHit) {
+        throw new Error("Could not find the Excel tracker anywhere on SharePoint or Teams. Verify the file name exactly matches 'AUTOMATION TEST - 260202 Rev Sheet'.");
+      }
 
+      const fileId = fileHit.resource.id;
+      // Extract the drive ID out of the search hit metadata payload context
+      const driveId = fileHit.resource.parentReference?.driveId;
+      
+      if (!driveId) {
+        throw new Error("Target file located, but parent library path details could not be extracted.");
+      }
+
+      // 🌟 REWRITTEN: Points directly to the shared site drive instead of a personal /me/ endpoint
       const rowsRes = await fetch(
-        'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblRevenue/rows',
+        `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/rows`,
         { headers: { Authorization: 'Bearer ' + token } }
       );
       const rowsData = await rowsRes.json();
       if (rowsData.error) throw new Error('Could not read tblRevenue: ' + rowsData.error.message);
 
       const hdrsRes = await fetch(
-        'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblRevenue/columns?$select=name,index',
+        `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/columns?$select=name,index`,
         { headers: { Authorization: 'Bearer ' + token } }
       );
       const hdrsData = await hdrsRes.json();
@@ -317,17 +345,27 @@ function bootstrapSCLAddIn() {
         setLoading(false);
       }, [apiKey]);
 
+      // Global workbook writing operations update to inherit multi-drive syntax
       const writeToExcel = async (entries, token) => {
         const searchRes = await fetch(
-          "https://graph.microsoft.com/v1.0/me/drive/root/search(q='AUTOMATION TEST - 260202 Rev Sheet')?$select=id,name&$top=5",
-          { headers: { Authorization: 'Bearer ' + token } }
+          "https://graph.microsoft.com/v1.0/search/query",
+          {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              requests: [{ entityTypes: ['driveItem'], query: { queryString: '"AUTOMATION TEST - 260202 Rev Sheet"' }, size: 1 }]
+            })
+          }
         );
         const searchData = await searchRes.json();
-        const file = (searchData.value || []).find(f => f.name && f.name.includes('260202'));
-        if (!file) throw new Error('Could not find Excel file on SharePoint.');
+        const hit = searchData.value?.[0]?.hitsContainers?.[0]?.hits?.[0];
+        if (!hit) throw new Error('Could not find Excel file during write sync.');
+
+        const fileId = hit.resource.id;
+        const driveId = hit.resource.parentReference.driveId;
 
         const hdrsRes = await fetch(
-          'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblRevenue/columns?$select=name,index',
+          `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/columns?$select=name,index`,
           { headers: { Authorization: 'Bearer ' + token } }
         );
         const hdrsData = await hdrsRes.json();
@@ -335,7 +373,7 @@ function bootstrapSCLAddIn() {
         (hdrsData.value || []).forEach(c => { colMap[c.name] = c.index; });
 
         const rowsRes = await fetch(
-          'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblRevenue/rows',
+          `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/rows`,
           { headers: { Authorization: 'Bearer ' + token } }
         );
         const rowsData = await rowsRes.json();
@@ -352,7 +390,7 @@ function bootstrapSCLAddIn() {
           if (colIdx === undefined) { results.push({ id: entry.id, ok: false, err: 'Column not found: ' + entry.field }); continue; }
 
           const patchRes = await fetch(
-            'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblRevenue/rows/itemAt(index=' + rowIdx + ')',
+            `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/rows/itemAt(index=${rowIdx})`,
             {
               method: 'PATCH',
               headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -365,7 +403,7 @@ function bootstrapSCLAddIn() {
 
           try {
             await fetch(
-              'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblChangeLog/rows',
+              `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblChangeLog/rows`,
               {
                 method: 'POST',
                 headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
