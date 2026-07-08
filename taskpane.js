@@ -116,7 +116,7 @@ async function callClaude(emailText, apiKey) {
   return JSON.parse(txt.slice(s, e+1));
 }
 
-// 🌟 SMOKE TEST FIX: Bind callClaude to the global window context explicitly
+// Global window container attachment
 window.callClaude = callClaude;
 
 function getEmailText() {
@@ -256,7 +256,6 @@ function LogRow({ e: entry }) {
 }
 
 function App() {
-  const [ready, setReady] = useState(false);
   const [tab, setTab] = useState('suggest');
   const [apiKey, setApiKey] = useState(() => recall('scl_key',''));
   const [showKey, setShowKey] = useState(!recall('scl_key',''));
@@ -272,7 +271,6 @@ function App() {
     return m;
   }, []);
 
-  useEffect(() => { Office.onReady(() => setReady(true)); }, []);
   useEffect(() => { persist('scl_queue', queue); }, [queue]);
   useEffect(() => { persist('scl_log', log); }, [log]);
   useEffect(() => { persist('scl_key', apiKey); }, [apiKey]);
@@ -291,7 +289,7 @@ function App() {
       }
       const emailText = await getEmailText();
       
-      // 🌟 SMOKE TEST FIX: Invoke callClaude from the global window boundary
+      // Global window boundary execution
       const r = await window.callClaude(emailText, apiKey);
       
       if (!r.relevant) { setErr("No tracker update found in this email."); setLoading(false); return; }
@@ -422,7 +420,6 @@ async function writeToExcel(entries, token) {
   }
 
   const e = (tag, props, ...ch) => React.createElement(tag, props, ...ch);
-  if (!ready) return e('div',{style:{padding:20,color:'#64748B',fontSize:13}},'Connecting to Outlook…');
 
   return e('div', { style:{minHeight:'100vh',background:BG} },
     e('div', { style:{background:'#fff',borderBottom:'1px solid '+LINE,padding:'10px 12px'} },
@@ -441,7 +438,7 @@ async function writeToExcel(entries, token) {
         e('div',{style:{fontSize:10,color:'#94A3B8',marginTop:3}}, '✓ Writes directly to Excel on SharePoint via Microsoft Graph')
       ),
       e('button', {
-        onClick:handleAnalyze, disabled:loading||!ready,
+        onClick:handleAnalyze, disabled:loading,
         style:{width:'100%',background:loading?'#94A3B8':INK,color:'#fff',border:'none',borderRadius:7,padding:'9px',fontSize:13,fontWeight:700,cursor:loading?'not-allowed':'pointer',marginBottom:8}
       }, loading ? '⏳ Analyzing…' : '▶  Analyze this email'),
       err && e('div',{style:{fontSize:11,color:DANGER,marginBottom:6}},err),
