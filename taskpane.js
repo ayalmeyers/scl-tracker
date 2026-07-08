@@ -116,7 +116,7 @@ async function callClaude(emailText, apiKey) {
   return JSON.parse(txt.slice(s, e+1));
 }
 
-// Make sure it is explicitly attached to window to combat module containment issues
+// 🌟 SMOKE TEST FIX: Bind callClaude to the global window context explicitly
 window.callClaude = callClaude;
 
 function getEmailText() {
@@ -290,7 +290,10 @@ function App() {
         setErr('SharePoint: ' + fetchErr.message + ' — using cached roster.');
       }
       const emailText = await getEmailText();
-      const r = await callClaude(emailText, apiKey);
+      
+      // 🌟 SMOKE TEST FIX: Invoke callClaude from the global window boundary
+      const r = await window.callClaude(emailText, apiKey);
+      
       if (!r.relevant) { setErr("No tracker update found in this email."); setLoading(false); return; }
       const eng = r.matched_id ? ROSTER.find(x=>x.id===r.matched_id) : null;
       setQueue(prev => [{
