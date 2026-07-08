@@ -11,13 +11,15 @@ function bootstrapSCLAddIn() {
     // Live Roster cache
     let ROSTER = [];
 
+    // 🌟 FIXED: Wrapped configuration values inside the required 'auth' object block
     const MSAL_CONFIG = {
-      clientId: 'eb6e6717-7f19-4491-b78a-7aa4f72d81f0',
-      authority: 'https://login.microsoftonline.com/6beb0f9d-db3e-45fc-bcc4-b09729c0b74e',
-      redirectUri: 'https://scl-tracker.vercel.app/index.html',
+      auth: {
+        clientId: 'eb6e6717-7f19-4491-b78a-7aa4f72d81f0',
+        authority: 'https://login.microsoftonline.com/6beb0f9d-db3e-45fc-bcc4-b09729c0b74e',
+        redirectUri: 'https://scl-tracker.vercel.app/index.html'
+      }
     };
 
-    // 🌟 Strict error tracking handles security blocks cleanly without bubbling up DOM Events
     const getMSAL = () => {
       return new Promise((resolve, reject) => {
         if (window.msal) { 
