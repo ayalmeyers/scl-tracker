@@ -1,11 +1,14 @@
+// Wrap everything in a bootstrapper to prevent CDN script-loading race conditions
 function bootstrapSCLAddIn() {
   try {
     const { useState, useEffect, useCallback, useMemo } = React;
 
+    // GLOBAL CONFIGS & CONSTANTS
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sept','Oct','Nov','Dec'];
     const STATUSES = ['Paid','Part Paid','Invoiced','SOW/Pending','On Hold','Other'];
     const INK='#1F3864', LINE='#E4E7EE', GO='#15803D', WARN='#B45309', DANGER='#B91C1C', BG='#F6F7F9';
 
+    // Live Roster cache
     let ROSTER = [];
 
     const MSAL_CONFIG = {
@@ -89,7 +92,7 @@ function bootstrapSCLAddIn() {
     const persist = (k,v) => {try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}};
     const recall = (k,fb) => {try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch(_){return fb;}};
 
-    // 🌟 Modified to call your internal Vercel API proxy route, wiping out CORS errors
+    // AI Analysis Endpoint with absolute URL routing & HTML safe text catches
     const callClaude = async (emailText, apiKey) => {
       const rosterBlock = ROSTER.map(r =>
         r.id+'|'+r.client+'|'+r.engagement+'|'+r.owner+'|'+(r.status||'(blank)')
@@ -97,11 +100,17 @@ function bootstrapSCLAddIn() {
       const sys = 'You read one email and propose a single update to a revenue tracker. Match the email to exactly one engagement from the roster. Client names may differ slightly. Engagements are often a person name. Match on meaning.\n\nReturn ONE json object, no markdown:\n{"relevant":boolean,"matched_id":string|null,"match_confidence":"high"|"medium"|"low","status_change":{"to":string}|null,"amount_change":{"month":string,"amount":number}|null,"reasoning":string,"email_excerpt":string}\n\n"high" only when one row is a clear fit. Never invent an ID. Ambiguous = null + low.';
       const user = 'ROSTER:\n'+rosterBlock+'\n\nEMAIL:\n"""\n'+emailText+'\n"""';
       
-      const res = await fetch('/api/claude', {
+      const res = await fetch('https://scl-tracker.vercel.app/api/claude', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 800, system: sys, messages: [{ role: 'user', content: user }] })
       });
+
+      if (!res.ok) {
+        const rawText = await res.text();
+        throw new Error(`Vercel Server Error (${res.status}): ${rawText.substring(0, 120)}...`);
+      }
+
       const data = await res.json();
       if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
       let txt = (data.content||[]).filter(b => b.type==='text').map(b => b.text).join('');
@@ -110,6 +119,7 @@ function bootstrapSCLAddIn() {
       return JSON.parse(txt.slice(s, e+1));
     };
 
+    // Force callClaude globally available in the window scope
     window.callClaude = callClaude;
 
     const getEmailText = () => {
@@ -238,7 +248,7 @@ function bootstrapSCLAddIn() {
         e('span',{style:{color:'#94A3B8',width:54,flexShrink:0,fontVariantNumeric:'tabular-nums'}},entry.id),
         e('span',{style:{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
           e('b',null,entry.client), e('span',{style:{color:'#94A3B8'}},' / '+entry.engagement)),
-        e('span',{style:{padding:'1px 5px',borderRadius:4,background:'#F1F5F9',color:'#475569',flexShrink:0,fontSize:10}},entry.field),
+        e('span',{style:{padding:'1px 5px',borderRadius:4,background:'#F1F5F9',color:#475569,flexShrink:0,fontSize:10}},entry.field),
         e('span',{style:{display:'flex',alignItems:'center',gap:3,flexShrink:0,fontVariantNumeric:'tabular-nums'}},
           e('span',{style:{color:'#94A3B8'}}, entry.field==='Status'?entry.from:money(entry.from)),
           e('span',{style:{color:'#CBD5E1'}},'→'),
@@ -277,7 +287,6 @@ function bootstrapSCLAddIn() {
             if (fresh.length > 0) { ROSTER.length = 0; fresh.forEach(r => ROSTER.push(r)); }
             setErr(null);
           } catch(fetchErr) {
-            // 🌟 Safety fix: stringify errors that lack standard message attributes
             const msg = fetchErr.message || (typeof fetchErr === 'object' ? JSON.stringify(fetchErr) : String(fetchErr));
             setErr('SharePoint setup message: ' + msg + ' — using cached roster context.');
           }
@@ -423,7 +432,7 @@ function bootstrapSCLAddIn() {
             e('input', {
               value:apiKey, onChange:ev=>setApiKey(ev.target.value),
               type:'password', placeholder:'sk-ant-…',
-              style:{width:'100%',border:'1px solid '+LINE,borderRadius:6,padding:'5px 8px',fontSize:12,outline:'none',marginBottom:8,boxSizing:'border-box'}
+              style:{width:'100%',border:'1px solid '+LINE,borderRadius:6,padding:'5px 8px',fontSize:12,outline/#none,marginBottom:8,boxSizing:'border-box'}
             }),
             e('div',{style:{fontSize:10,color:'#94A3B8',marginTop:3}}, '✓ Writes directly to Excel on SharePoint via Microsoft Graph')
           ),
