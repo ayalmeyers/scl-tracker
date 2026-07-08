@@ -17,13 +17,17 @@ function bootstrapSCLAddIn() {
       redirectUri: 'https://scl-tracker.vercel.app/index.html',
     };
 
+    // 🌟 Strict error tracking handles security blocks cleanly without bubbling up DOM Events
     const getMSAL = () => {
       return new Promise((resolve, reject) => {
-        if (window.msal) { resolve(new window.msal.PublicClientApplication(MSAL_CONFIG)); return; }
+        if (window.msal) { 
+          resolve(new window.msal.PublicClientApplication(MSAL_CONFIG)); 
+          return; 
+        }
         const s = document.createElement('script');
         s.src = 'https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js';
         s.onload = () => resolve(new window.msal.PublicClientApplication(MSAL_CONFIG));
-        s.onerror = reject;
+        s.onerror = () => reject(new Error('Microsoft Auth CDN script blocked by Outlook security policy. Ensure it is explicitly defined in your index.html file.'));
         document.head.appendChild(s);
       });
     };
@@ -92,7 +96,6 @@ function bootstrapSCLAddIn() {
     const persist = (k,v) => {try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}};
     const recall = (k,fb) => {try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch(_){return fb;}};
 
-    // AI Analysis Endpoint with absolute URL routing & HTML safe text catches
     const callClaude = async (emailText, apiKey) => {
       const rosterBlock = ROSTER.map(r =>
         r.id+'|'+r.client+'|'+r.engagement+'|'+r.owner+'|'+(r.status||'(blank)')
@@ -119,7 +122,6 @@ function bootstrapSCLAddIn() {
       return JSON.parse(txt.slice(s, e+1));
     };
 
-    // Force callClaude globally available in the window scope
     window.callClaude = callClaude;
 
     const getEmailText = () => {
@@ -345,7 +347,7 @@ function bootstrapSCLAddIn() {
           if (rowIdx === -1) { results.push({ id: entry.id, ok: false, err: 'Row not found' }); continue; }
 
           const colIdx = entry.field === 'Status' ? colMap['Status'] : colMap[entry.field];
-          if (colIdx === undefined) { Antiquotesresults.push({ id: entry.id, ok: false, err: 'Column not found: ' + entry.field }); continue; }
+          if (colIdx === undefined) { results.push({ id: entry.id, ok: false, err: 'Column not found: ' + entry.field }); continue; }
 
           const patchRes = await fetch(
             'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblRevenue/rows/itemAt(index=' + rowIdx + ')',
