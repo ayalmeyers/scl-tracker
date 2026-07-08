@@ -1,4 +1,10 @@
 const { useState, useEffect, useCallback, useMemo } = React;
+
+// GLOBAL CONFIGS & CONSTANTS
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sept','Oct','Nov','Dec'];
+const STATUSES = ['Paid','Part Paid','Invoiced','SOW/Pending','On Hold','Other'];
+const INK='#1F3864', LINE='#E4E7EE', GO='#15803D', WARN='#B45309', DANGER='#B91C1C', BG='#F6F7F9';
+
 // Roster is loaded live from SharePoint on each Analyze click
 let ROSTER = [];
 
@@ -38,7 +44,6 @@ async function getGraphToken() {
 
 async function fetchRosterFromSharePoint() {
   const token = await getGraphToken();
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sept','Oct','Nov','Dec'];
 
   // Search for the file by name across the tenant's SharePoint
   const searchRes = await fetch(
@@ -69,7 +74,7 @@ async function fetchRosterFromSharePoint() {
   const roster = (rowsData.value || []).map(row => {
     const v = row.values[0];
     const monthData = {};
-    months.forEach(m => {
+    MONTHS.forEach(m => {
       const val = colMap[m] !== undefined ? v[colMap[m]] : null;
       if (val !== null && val !== '' && val !== 0) monthData[m] = Number(val);
     });
@@ -85,14 +90,13 @@ async function fetchRosterFromSharePoint() {
 
   return roster;
 }
-const STATUSES = ['Paid','Part Paid','Invoiced','SOW/Pending','On Hold','Other'];
-const INK='#1F3864',LINE='#E4E7EE',GO='#15803D',WARN='#B45309',DANGER='#B91C1C',BG='#F6F7F9';
+
 const money = n => n==null||n==='' ? '—' : '$'+Number(n).toLocaleString();
 
 function persist(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}}
 function recall(k,fb){try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch(_){return fb;}}
 
-
+// AI Analysis Endpoint
 async function callClaude(emailText, apiKey) {
   const rosterBlock = ROSTER.map(r =>
     r.id+'|'+r.client+'|'+r.engagement+'|'+r.owner+'|'+(r.status||'(blank)')
@@ -111,6 +115,9 @@ async function callClaude(emailText, apiKey) {
   const s = txt.indexOf('{'), e = txt.lastIndexOf('}');
   return JSON.parse(txt.slice(s, e+1));
 }
+
+// Make sure it is explicitly attached to window to combat module containment issues
+window.callClaude = callClaude;
 
 function getEmailText() {
   return new Promise((resolve, reject) => {
@@ -150,7 +157,8 @@ function Suggestion({ item, baseline, log, onApply, onDismiss }) {
   }, [mid, baseline, log]);
 
   const noMatch = !mid;
-  const changed = mid!==(item.matched_id||'')||statusTo!==(item.statusTo||'')||month!==(item.month||'')||String(amount)!==String(item.amount??'');
+  const fallbackAmount = item.amount !== undefined && item.amount !== null ? item.amount : '';
+  const changed = mid!==(item.matched_id||'')||statusTo!==(item.statusTo||'')||month!==(item.month||'')||String(amount)!==String(fallbackAmount);
   const canApply = !noMatch && (statusTo||(month && amount!==''));
   const candidates = search ? ROSTER.filter(r => (r.client+' '+r.engagement+' '+r.id).toLowerCase().includes(search.toLowerCase())).slice(0,5) : [];
 
@@ -254,7 +262,6 @@ function App() {
   const [showKey, setShowKey] = useState(!recall('scl_key',''));
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
-  // Graph write replaces webhook — no webhook URL needed
   const [queue, setQueue] = useState(() => recall('scl_queue',[]));
   const [log, setLog] = useState(() => recall('scl_log',[]));
   const [writeStatus, setWriteStatus] = useState({});
@@ -270,12 +277,10 @@ function App() {
   useEffect(() => { persist('scl_log', log); }, [log]);
   useEffect(() => { persist('scl_key', apiKey); }, [apiKey]);
 
-
   const handleAnalyze = useCallback(async () => {
     if (!apiKey.trim()) { setErr('Enter your Anthropic API key first (⚙ above).'); return; }
     setLoading(true); setErr(null);
     try {
-      // fetch live roster from SharePoint
       setErr('Connecting to SharePoint…');
       try {
         const fresh = await fetchRosterFromSharePoint();
@@ -292,7 +297,7 @@ function App() {
         qid: Date.now()+'',
         matched_id:r.matched_id, client:eng?.client||'', engagement:eng?.engagement||'', owner:eng?.owner||'',
         confidence:r.match_confidence||'low', statusTo:r.status_change?.to||'',
-        month:r.amount_change?.month||'', amount:r.amount_change?.amount??'',
+        month:r.amount_change?.month||'', amount:r.amount_change?.amount !== undefined ? r.amount_change.amount : '',
         reasoning:r.reasoning||'', excerpt:r.email_excerpt||'',
         emailSubject:emailText.match(/^Subject: (.+)/m)?.[1]||'',
         emailFrom:emailText.match(/^From: (.+)/m)?.[1]||'',
@@ -302,9 +307,7 @@ function App() {
     setLoading(false);
   }, [apiKey]);
 
-
 async function writeToExcel(entries, token) {
-  // Find the file first (reuse same search as roster fetch)
   const searchRes = await fetch(
     "https://graph.microsoft.com/v1.0/me/drive/root/search(q='AUTOMATION TEST - 260202 Rev Sheet')?$select=id,name&$top=5",
     { headers: { Authorization: 'Bearer ' + token } }
@@ -313,7 +316,6 @@ async function writeToExcel(entries, token) {
   const file = (searchData.value || []).find(f => f.name && f.name.includes('260202'));
   if (!file) throw new Error('Could not find Excel file on SharePoint.');
 
-  // Get column headers from tblRevenue to find right column index
   const hdrsRes = await fetch(
     'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblRevenue/columns?$select=name,index',
     { headers: { Authorization: 'Bearer ' + token } }
@@ -322,7 +324,6 @@ async function writeToExcel(entries, token) {
   const colMap = {};
   (hdrsData.value || []).forEach(c => { colMap[c.name] = c.index; });
 
-  // Get all rows to find the right one by EngagementID
   const rowsRes = await fetch(
     'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblRevenue/rows',
     { headers: { Authorization: 'Bearer ' + token } }
@@ -334,14 +335,12 @@ async function writeToExcel(entries, token) {
   const results = [];
 
   for (const entry of entries) {
-    // Find the row index for this engagement
     const rowIdx = rows.findIndex(r => String(r.values[0][eidCol]) === entry.id);
     if (rowIdx === -1) { results.push({ id: entry.id, ok: false, err: 'Row not found' }); continue; }
 
     const colIdx = entry.field === 'Status' ? colMap['Status'] : colMap[entry.field];
     if (colIdx === undefined) { results.push({ id: entry.id, ok: false, err: 'Column not found: ' + entry.field }); continue; }
 
-    // Patch the specific cell using row address
     const patchRes = await fetch(
       'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblRevenue/rows/itemAt(index=' + rowIdx + ')',
       {
@@ -355,7 +354,6 @@ async function writeToExcel(entries, token) {
     const ok = patchRes.ok;
     results.push({ id: entry.id, field: entry.field, ok });
 
-    // Also write to tblChangeLog if it exists
     try {
       await fetch(
         'https://graph.microsoft.com/v1.0/me/drive/items/' + file.id + '/workbook/tables/tblChangeLog/rows',
@@ -375,7 +373,7 @@ async function writeToExcel(entries, token) {
           })
         }
       );
-    } catch(_) {} // changelog write failure is non-fatal
+    } catch(_) {}
   }
   return results;
 }
@@ -386,15 +384,21 @@ async function writeToExcel(entries, token) {
     const eng = ROSTER.find(x=>x.id===edited.matched_id);
     const logForId = log.filter(e=>e.id===edited.matched_id);
     const curStatus = logForId.filter(e=>e.field==='Status').slice(-1)[0]?.to || baseline[edited.matched_id]?.status||'';
-    const curMonth = edited.month ? (logForId.filter(e=>e.field===edited.month).slice(-1)[0]?.to ?? baseline[edited.matched_id]?.months?.[edited.month]??null) : null;
+    
+    let baseMonthVal = null;
+    if (baseline[edited.matched_id] && baseline[edited.matched_id].months) {
+      baseMonthVal = baseline[edited.matched_id].months[edited.month];
+    }
+    const lastLogVal = logForId.filter(e=>e.field===edited.month).slice(-1)[0]?.to;
+    const curMonth = edited.month ? (lastLogVal !== undefined ? lastLogVal : (baseMonthVal !== undefined ? baseMonthVal : null)) : null;
+    
     const entries = [];
     if (edited.statusTo && edited.statusTo!==curStatus)
       entries.push({date,time,id:edited.matched_id,client:eng?.client||'',engagement:eng?.engagement||'',field:'Status',from:curStatus||'(blank)',to:edited.statusTo,confidence:item.confidence,edited:wasEdited,emailSubject:item.emailSubject||'',emailFrom:item.emailFrom||'',reasoning:item.reasoning||'',excerpt:item.excerpt||''});
     if (edited.month && edited.amount!==''&&edited.amount!==null && Number(curMonth)!==Number(edited.amount))
-      entries.push({date,time,id:edited.matched_id,client:eng?.client||'',engagement:eng?.engagement||'',field:edited.month,from:curMonth??'(blank)',to:Number(edited.amount),confidence:item.confidence,edited:wasEdited,emailSubject:item.emailSubject||'',emailFrom:item.emailFrom||'',reasoning:item.reasoning||'',excerpt:item.excerpt||''});
+      entries.push({date,time,id:edited.matched_id,client:eng?.client||'',engagement:eng?.engagement||'',field:edited.month,from:curMonth !== null ? curMonth : '(blank)',to:Number(edited.amount),confidence:item.confidence,edited:wasEdited,emailSubject:item.emailSubject||'',emailFrom:item.emailFrom||'',reasoning:item.reasoning||'',excerpt:item.excerpt||''});
     if (!entries.length) { setQueue(prev=>prev.filter(x=>x.qid!==item.qid)); return; }
 
-    // write directly to Excel via Microsoft Graph
     setWriteStatus(prev=>({...prev,[item.qid]:'writing'}));
     try {
       const token = await getGraphToken();
@@ -418,7 +422,6 @@ async function writeToExcel(entries, token) {
   if (!ready) return e('div',{style:{padding:20,color:'#64748B',fontSize:13}},'Connecting to Outlook…');
 
   return e('div', { style:{minHeight:'100vh',background:BG} },
-    // ── header ──
     e('div', { style:{background:'#fff',borderBottom:'1px solid '+LINE,padding:'10px 12px'} },
       e('div', { style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6} },
         e('div', { style:{fontSize:13,fontWeight:700,color:INK,letterSpacing:'-0.01em'} }, 'SCL Revenue Tracker'),
@@ -449,7 +452,6 @@ async function writeToExcel(entries, token) {
       )
     ),
 
-    // ── body ──
     e('div', { style:{padding:10} },
       tab==='suggest'
         ? (queue.length===0
