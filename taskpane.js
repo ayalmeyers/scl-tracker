@@ -17,7 +17,7 @@ function bootstrapSCLAddIn() {
       redirectUri: 'https://scl-tracker.vercel.app/index.html',
     };
 
-    function getMSAL() {
+    const getMSAL = () => {
       return new Promise((resolve, reject) => {
         if (window.msal) { resolve(new window.msal.PublicClientApplication(MSAL_CONFIG)); return; }
         const s = document.createElement('script');
@@ -26,9 +26,9 @@ function bootstrapSCLAddIn() {
         s.onerror = reject;
         document.head.appendChild(s);
       });
-    }
+    };
 
-    async function getGraphToken() {
+    const getGraphToken = async () => {
       const pca = await getMSAL();
       await pca.initialize();
       const accounts = pca.getAllAccounts();
@@ -41,9 +41,9 @@ function bootstrapSCLAddIn() {
       }
       const result = await pca.acquireTokenPopup(request);
       return result.accessToken;
-    }
+    };
 
-    async function fetchRosterFromSharePoint() {
+    const fetchRosterFromSharePoint = async () => {
       const token = await getGraphToken();
       const searchRes = await fetch(
         "https://graph.microsoft.com/v1.0/me/drive/root/search(q='AUTOMATION TEST - 260202 Rev Sheet')?$select=id,name,webUrl&$top=5",
@@ -86,13 +86,14 @@ function bootstrapSCLAddIn() {
       }).filter(r => r.id.startsWith('ENG-'));
 
       return roster;
-    }
+    };
 
     const money = n => n==null||n==='' ? '—' : '$'+Number(n).toLocaleString();
-    function persist(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}}
-    function recall(k,fb){try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch(_){return fb;}}
+    const persist = (k,v) => {try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}};
+    const recall = (k,fb) => {try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch(_){return fb;}};
 
-    async function callClaude(emailText, apiKey) {
+    // 🌟 Variable Assignment style fixes block hoisting exceptions
+    const callClaude = async (emailText, apiKey) => {
       const rosterBlock = ROSTER.map(r =>
         r.id+'|'+r.client+'|'+r.engagement+'|'+r.owner+'|'+(r.status||'(blank)')
       ).join('\n');
@@ -109,12 +110,12 @@ function bootstrapSCLAddIn() {
       txt = txt.replace(/```json|```/g,'').trim();
       const s = txt.indexOf('{'), e = txt.lastIndexOf('}');
       return JSON.parse(txt.slice(s, e+1));
-    }
+    };
 
     // Force callClaude globally available in the window scope
     window.callClaude = callClaude;
 
-    function getEmailText() {
+    const getEmailText = () => {
       return new Promise((resolve, reject) => {
         const item = Office.context.mailbox.item;
         if (!item) { reject(new Error('No email selected')); return; }
@@ -125,17 +126,17 @@ function bootstrapSCLAddIn() {
           resolve('Subject: '+subject+'\nFrom: '+from+'\n\n'+result.value);
         });
       });
-    }
+    };
 
-    function Badge({ c }) {
+    const Badge = ({ c }) => {
       const map = { high:[GO,'#DCFCE7'], medium:[WARN,'#FEF3C7'], low:[DANGER,'#FEE2E2'] };
       const [fg, bg] = map[c] || map.low;
       return React.createElement('span', {
         style: { fontSize:10, fontWeight:600, padding:'2px 7px', borderRadius:99, color:fg, background:bg, whiteSpace:'nowrap' }
       }, c+' confidence');
-    }
+    };
 
-    function Suggestion({ item, baseline, log, onApply, onDismiss }) {
+    const Suggestion = ({ item, baseline, log, onApply, onDismiss }) => {
       const [editing, setEditing] = useState(false);
       const [mid, setMid] = useState(item.matched_id||'');
       const [statusTo, setStatusTo] = useState(item.statusTo||'');
@@ -216,7 +217,7 @@ function bootstrapSCLAddIn() {
                   month
                     ? [e('span',{style:{fontSize:11,color:'#94A3B8'},key:'m'},month+':'),e('span',{style:{color:'#94A3B8'},key:'f'},money(cur?.months?.[month])),e('span',{style:{color:'#CBD5E1'},key:'a'},'→'),e('b',{style:{color:GO},key:'n'},money(amount))]
                     : e('span',{style:{fontSize:11,color:'#CBD5E1'}},'no amount')
-                )
+            )
           )
         ),
 
@@ -231,9 +232,9 @@ function bootstrapSCLAddIn() {
             style:{background:'none',color:'#94A3B8',border:'none',padding:'7px 10px',fontSize:12,cursor:'pointer',marginLeft:'auto'} }, 'Dismiss')
         )
       );
-    }
+    };
 
-    function LogRow({ e: entry }) {
+    const LogRow = ({ e: entry }) => {
       const e = (tag, props, ...ch) => React.createElement(tag, props, ...ch);
       return e('div', { style:{display:'flex',alignItems:'center',gap:6,padding:'7px 12px',borderBottom:'1px solid '+LINE,fontSize:11,flexWrap:'wrap'} },
         e('span',{style:{color:'#94A3B8',width:36,flexShrink:0}},entry.time),
@@ -248,9 +249,9 @@ function bootstrapSCLAddIn() {
         ),
         entry.edited && e('span',{style:{fontSize:9,padding:'1px 4px',borderRadius:3,background:'#FEF3C7',color:WARN}},'edited')
       );
-    }
+    };
 
-    function App() {
+    const App = () => {
       const [tab, setTab] = useState('suggest');
       const [apiKey, setApiKey] = useState(() => recall('scl_key',''));
       const [showKey, setShowKey] = useState(!recall('scl_key',''));
@@ -283,7 +284,7 @@ function bootstrapSCLAddIn() {
           }
           const emailText = await getEmailText();
           
-          // Invoke callClaude from window context
+          // Invoke from global context
           const r = await window.callClaude(emailText, apiKey);
           
           if (!r.relevant) { setErr("No tracker update found in this email."); setLoading(false); return; }
@@ -302,7 +303,7 @@ function bootstrapSCLAddIn() {
         setLoading(false);
       }, [apiKey]);
 
-      async function writeToExcel(entries, token) {
+      const writeToExcel = async (entries, token) => {
         const searchRes = await fetch(
           "https://graph.microsoft.com/v1.0/me/drive/root/search(q='AUTOMATION TEST - 260202 Rev Sheet')?$select=id,name&$top=5",
           { headers: { Authorization: 'Bearer ' + token } }
@@ -370,9 +371,9 @@ function bootstrapSCLAddIn() {
           } catch(_) {}
         }
         return results;
-      }
+      };
 
-      async function applyItem(item, edited, wasEdited) {
+      const applyItem = async (item, edited, wasEdited) => {
         const now = new Date();
         const date=now.toISOString().slice(0,10), time=now.toTimeString().slice(0,5);
         const eng = ROSTER.find(x=>x.id===edited.matched_id);
@@ -405,7 +406,7 @@ function bootstrapSCLAddIn() {
 
         setLog(prev=>[...entries,...prev]);
         setQueue(prev=>prev.filter(x=>x.qid!==item.qid));
-      }
+      };
 
       const e = (tag, props, ...ch) => React.createElement(tag, props, ...ch);
 
@@ -466,9 +467,9 @@ function bootstrapSCLAddIn() {
               )
         )
       );
-    }
+    };
 
-    // Mount application
+    // Mount application safely
     ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
 
   } catch (bootErr) {
