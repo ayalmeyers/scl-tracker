@@ -79,21 +79,21 @@ function bootstrapSCLAddIn() {
 
       const fileId = fileHit.resource.id;
       const driveId = fileHit.resource.parentReference?.driveId;
+      const fileWebUrl = fileHit.resource.webUrl || 'Unknown Location';
       
       if (!driveId) {
         throw new Error("Target file located, but parent library path details could not be extracted.");
       }
 
-      // 🌟 FIXED: Dropped the selective property filter to bypass enterprise API restrictions
       const hdrsRes = await fetch(
         `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/columns`,
         { headers: { Authorization: 'Bearer ' + token } }
       );
       const hdrsData = await hdrsRes.json();
       
-      // 🌟 NEW: Throw a clear notification if the header fetch itself encounters an API block
+      // 🌟 UPDATED: If an error is thrown, print out the exact web path of the file it targeted
       if (hdrsData.error) {
-        throw new Error(`SharePoint Header Error: ${hdrsData.error.message || JSON.stringify(hdrsData.error)}`);
+        throw new Error(`Table 'tblRevenue' missing inside file copy found at: [ ${fileWebUrl} ]. If this is an old or duplicate copy, remove it, or wait a few minutes for SharePoint to finish indexing your new table.`);
       }
       
       const colMap = {};
@@ -390,7 +390,6 @@ function bootstrapSCLAddIn() {
         const fileId = hit.resource.id;
         const driveId = hit.resource.parentReference.driveId;
 
-        // 🌟 FIXED: Dropped parameter filter here as well to protect write stability
         const hdrsRes = await fetch(
           `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/columns`,
           { headers: { Authorization: 'Bearer ' + token } }
