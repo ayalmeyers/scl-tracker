@@ -79,7 +79,6 @@ function bootstrapSCLAddIn() {
 
       const fileId = fileHit.resource.id;
       const driveId = fileHit.resource.parentReference?.driveId;
-      const fileWebUrl = fileHit.resource.webUrl || 'Unknown Location';
       
       if (!driveId) {
         throw new Error("Target file located, but parent library path details could not be extracted.");
@@ -90,11 +89,7 @@ function bootstrapSCLAddIn() {
         { headers: { Authorization: 'Bearer ' + token } }
       );
       const hdrsData = await hdrsRes.json();
-      
-      // 🌟 UPDATED: If an error is thrown, print out the exact web path of the file it targeted
-      if (hdrsData.error) {
-        throw new Error(`Table 'tblRevenue' missing inside file copy found at: [ ${fileWebUrl} ]. If this is an old or duplicate copy, remove it, or wait a few minutes for SharePoint to finish indexing your new table.`);
-      }
+      if (hdrsData.error) throw new Error(`SharePoint Header Error: ${hdrsData.error.message}`);
       
       const colMap = {};
       const rawHeaders = [];
@@ -122,7 +117,9 @@ function bootstrapSCLAddIn() {
       const rowsData = await rowsRes.json();
       if (rowsData.error) throw new Error('Could not read tblRevenue: ' + rowsData.error.message);
 
-      const roster = (rowsData.value || []).map(row => {
+      const rawRowsArray = rowsData.value || [];
+
+      const roster = rawRowsArray.map(row => {
         const v = row.values[0];
         const monthData = {};
         
@@ -133,17 +130,20 @@ function bootstrapSCLAddIn() {
         });
         
         return {
-          id: String(v[idxId] || ''),
-          client: String(v[idxClient] || ''),
-          engagement: String(v[idxEng] || ''),
-          owner: idxOwner !== undefined ? String(v[idxOwner] || '') : '',
-          status: idxStatus !== undefined ? String(v[idxStatus] || '') : '',
+          id: String(v[idxId] || '').trim(),
+          client: String(v[idxClient] || '').trim(),
+          engagement: String(v[idxEng] || '').trim(),
+          owner: idxOwner !== undefined ? String(v[idxOwner] || '').trim() : '',
+          status: idxStatus !== undefined ? String(v[idxStatus] || '').trim() : '',
           months: monthData,
         };
-      }).filter(r => r.id && r.id.trim() !== '' && r.id !== 'undefined');
+      }).filter(r => r.id && r.id !== '' && r.id !== 'undefined' && r.id !== 'null');
 
+      // 🌟 DIAGNOSTIC UPGRADE: Show exactly what cell contents are inside your first row
       if (roster.length === 0) {
-        throw new Error(`Rows read successfully, but 0 records parsed. Check that your ID column contains data.`);
+        const totalRowsFound = rawRowsArray.length;
+        const firstRowValues = totalRowsFound > 0 ? JSON.stringify(rawRowsArray[0].values[0]) : "COMPLETELY EMPTY TABLE";
+        throw new Error(`Connected! Read ${totalRowsFound} table rows, but all IDs were blank or invalid. Target ID column: '${rawHeaders[idxId]}' (Index ${idxId}). First row data cells look like: ${firstRowValues}. Please add data down your columns in Excel.`);
       }
 
       return roster;
@@ -247,7 +247,7 @@ function bootstrapSCLAddIn() {
             placeholder:'Search client or engagement…',
             style:{width:'100%',border:'1px solid '+LINE,borderRadius:6,padding:'5px 8px',fontSize:12,outline:'none',boxSizing:'border-box'}
           }),
-          candidates.length>0 && e('div', { style:{position:'absolute',zIndex:10,background:'#fff',width:'100%',border:'1px solid '+LINE,borderRadius:6,marginTop:2,boxShadow:'0 4px 12px rgba(0,0,0,0.1)',maxHeight:180,overflowY:'auto'} },
+          candidates.length>0 && e('div', { position:'absolute',zIndex:10,background:'#fff',width:'100%',border:'1px solid '+LINE,borderRadius:6,marginTop:2,boxShadow:'0 4px 12px rgba(0,0,0,0.1)',maxHeight:180,overflowY:'auto'} },
             ...candidates.map(c => e('button', {
               key:c.id, onClick:()=>{setMid(c.id);setSearch('');},
               style:{display:'block',width:'100%',textAlign:'left',padding:'6px 10px',fontSize:11,borderBottom:'1px solid '+LINE,background:'none',cursor:'pointer',border:'none',borderBottom:'1px solid #F1F5F9'}
