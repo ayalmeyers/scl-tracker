@@ -84,13 +84,18 @@ function bootstrapSCLAddIn() {
         throw new Error("Target file located, but parent library path details could not be extracted.");
       }
 
+      // 🌟 FIXED: Dropped the selective property filter to bypass enterprise API restrictions
       const hdrsRes = await fetch(
-        `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/columns?$select=name,index`,
+        `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/columns`,
         { headers: { Authorization: 'Bearer ' + token } }
       );
       const hdrsData = await hdrsRes.json();
       
-      // 🌟 NEW: Build a case-insensitive, space-insensitive dictionary mapping system
+      // 🌟 NEW: Throw a clear notification if the header fetch itself encounters an API block
+      if (hdrsData.error) {
+        throw new Error(`SharePoint Header Error: ${hdrsData.error.message || JSON.stringify(hdrsData.error)}`);
+      }
+      
       const colMap = {};
       const rawHeaders = [];
       (hdrsData.value || []).forEach(c => { 
@@ -100,7 +105,6 @@ function bootstrapSCLAddIn() {
         colMap[normalizedKey] = c.index;
       });
 
-      // Extract indices using the robust fallback map keys
       const idxId = colMap['EngagementID'] !== undefined ? colMap['EngagementID'] : colMap['engagementid'];
       const idxClient = colMap['Client'] !== undefined ? colMap['Client'] : colMap['client'];
       const idxEng = colMap['Engagement'] !== undefined ? colMap['Engagement'] : colMap['engagement'];
@@ -136,7 +140,7 @@ function bootstrapSCLAddIn() {
           status: idxStatus !== undefined ? String(v[idxStatus] || '') : '',
           months: monthData,
         };
-      }).filter(r => r.id && r.id.trim() !== '' && r.id !== 'undefined'); // 🌟 REMOVED strict prefix requirement
+      }).filter(r => r.id && r.id.trim() !== '' && r.id !== 'undefined');
 
       if (roster.length === 0) {
         throw new Error(`Rows read successfully, but 0 records parsed. Check that your ID column contains data.`);
@@ -386,8 +390,9 @@ function bootstrapSCLAddIn() {
         const fileId = hit.resource.id;
         const driveId = hit.resource.parentReference.driveId;
 
+        // 🌟 FIXED: Dropped parameter filter here as well to protect write stability
         const hdrsRes = await fetch(
-          `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/columns?$select=name,index`,
+          `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/columns`,
           { headers: { Authorization: 'Bearer ' + token } }
         );
         const hdrsData = await hdrsRes.json();
