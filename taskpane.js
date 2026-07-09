@@ -139,7 +139,7 @@ function bootstrapSCLAddIn() {
         };
       }).filter(r => r.id && r.id !== '' && r.id !== 'undefined' && r.id !== 'null');
 
-      // 🌟 DIAGNOSTIC UPGRADE: Show exactly what cell contents are inside your first row
+      // Diagnostic array capture
       if (roster.length === 0) {
         const totalRowsFound = rawRowsArray.length;
         const firstRowValues = totalRowsFound > 0 ? JSON.stringify(rawRowsArray[0].values[0]) : "COMPLETELY EMPTY TABLE";
@@ -247,7 +247,8 @@ function bootstrapSCLAddIn() {
             placeholder:'Search client or engagement…',
             style:{width:'100%',border:'1px solid '+LINE,borderRadius:6,padding:'5px 8px',fontSize:12,outline:'none',boxSizing:'border-box'}
           }),
-          candidates.length>0 && e('div', { position:'absolute',zIndex:10,background:'#fff',width:'100%',border:'1px solid '+LINE,borderRadius:6,marginTop:2,boxShadow:'0 4px 12px rgba(0,0,0,0.1)',maxHeight:180,overflowY:'auto'} },
+          // 🌟 FIXED: Removed the duplicate trailing curly brace typo and wrapped it cleanly in a 'style' block
+          candidates.length>0 && e('div', { style: { position:'absolute', zIndex:10, background:'#fff', width:'100%', border:'1px solid '+LINE, borderRadius:6, marginTop:2, boxShadow:'0 4px 12px rgba(0,0,0,0.1)', maxHeight:180, overflowY:'auto' } },
             ...candidates.map(c => e('button', {
               key:c.id, onClick:()=>{setMid(c.id);setSearch('');},
               style:{display:'block',width:'100%',textAlign:'left',padding:'6px 10px',fontSize:11,borderBottom:'1px solid '+LINE,background:'none',cursor:'pointer',border:'none',borderBottom:'1px solid #F1F5F9'}
