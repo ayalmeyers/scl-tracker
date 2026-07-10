@@ -5,6 +5,8 @@ function bootstrapSCLAddIn() {
 
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sept','Oct','Nov','Dec'];
     const STATUSES = ['Paid','Part Paid','Invoiced','SOW/Pending','On Hold','Other'];
+    const SOP_TASKS = [{"trigger": "SOW Received", "task": "Route contract through DocuSign for signature", "owner": "SJC", "days": 1}, {"trigger": "SOW Received", "task": "Complete new project form and assign team members", "owner": "JT", "days": 3}, {"trigger": "SOW Received", "task": "Set up digital folders using SCL folder model and naming convention", "owner": "JT", "days": 3}, {"trigger": "SOW Received", "task": "Set up Microsoft Planner project from template", "owner": "JT", "days": 5}, {"trigger": "Session Completed", "task": "Issue invoice based on contract billing terms", "owner": "JT", "days": 2}, {"trigger": "Session Completed", "task": "Update Planner milestone status and progress notes", "owner": "JT", "days": 1}, {"trigger": "Invoice Sent", "task": "Follow up on payment if not received within 30 days", "owner": "JT", "days": 30}, {"trigger": "Payment Received", "task": "Confirm payment receipt and update billing record", "owner": "JT", "days": 1}, {"trigger": "Client Confirmation", "task": "Confirm session logistics and update Planner", "owner": "JT", "days": 1}, {"trigger": "Kickoff Scheduled", "task": "Confirm Planner setup, folder setup, and billing cues are in place before kickoff", "owner": "JT", "days": 2}, {"trigger": "Kickoff Complete", "task": "Document initial milestones and action items in Microsoft Planner", "owner": "JT", "days": 1}, {"trigger": "Client Delay", "task": "Follow up on rescheduled date and update Planner", "owner": "JT", "days": 3}, {"trigger": "Follow-up Needed", "task": "Send follow-up communication, copy SJ and Jennifer for visibility", "owner": "JT", "days": 1}, {"trigger": "Project Complete", "task": "Initiate closeout and cue final invoice", "owner": "JT", "days": 2}, {"trigger": "Project Complete", "task": "Confirm closing meeting held and notes submitted", "owner": "JT", "days": 5}, {"trigger": "Project Complete", "task": "Schedule 60-day client survey follow-up", "owner": "JT", "days": 60}, {"trigger": "Proposal Sent", "task": "Follow up on proposal status if no response in 7 days", "owner": "SJC", "days": 7}];
+
     const INK='#1F3864', LINE='#E4E7EE', GO='#15803D', WARN='#B45309', DANGER='#B91C1C', BG='#F6F7F9';
 
     let ROSTER = [];
@@ -115,7 +117,7 @@ function bootstrapSCLAddIn() {
 
     const callClaude = async (emailText, apiKey) => {
       const rosterBlock = ROSTER.map(r => r.id+'|'+r.client+'|'+r.engagement+'|'+r.owner+'|'+(r.status||'(blank)')).join('\n');
-      const sys = 'You read one email and propose a single update to a revenue tracker. Match the email to exactly one engagement from the roster. Client names may differ slightly. Engagements are often a person name. Match on meaning.\n\nReturn ONE json object, no markdown:\n{"relevant":boolean,"matched_id":string|null,"match_confidence":"high"|"medium"|"low","status_change":{"to":string}|null,"amount_change":{"month":string,"amount":number}|null,"reasoning":string,"email_excerpt":string}\n\n"high" only when one row is a clear fit. Never invent an ID. Ambiguous = null + low.';
+      const sys = 'You read one email and propose a single update to a revenue tracker. Match the email to exactly one engagement from the roster. Client names may differ slightly. Engagements are often a person name. Match on meaning.\n\nIMPORTANT DATE RULE: If no month is explicitly stated in the email, assume the month is the month the email was received. The email date is in the From/Date header.\n\nReturn ONE json object, no markdown:\n{"relevant":boolean,"matched_id":string|null,"match_confidence":"high"|"medium"|"low","status_change":{"to":string}|null,"amount_change":{"month":string,"amount":number}|null,"reasoning":string,"email_excerpt":string}\n\n"high" only when one row is a clear fit. Never invent an ID. Ambiguous = null + low.';
       const user = 'ROSTER:\n'+rosterBlock+'\n\nEMAIL:\n"""\n'+emailText+'\n"""';
       const res = await fetch('https://scl-tracker.vercel.app/api/claude', {
         method: 'POST',
@@ -158,6 +160,12 @@ function bootstrapSCLAddIn() {
       const [month, setMonth] = useState(item.month||'');
       const [amount, setAmount] = useState(item.amount==null?'':item.amount);
       const [search, setSearch] = useState('');
+      const [sopOptions, setSopOptions] = useState([]);
+      const [showTask, setShowTask] = useState(false);
+      const [taskText, setTaskText] = useState('');
+      const [taskOwner, setTaskOwner] = useState('');
+      const [taskDue, setTaskDue] = useState('');
+      const [taskNote, setTaskNote] = useState('');
 
       const eng = ROSTER.find(x => x.id===mid);
       const cur = useMemo(() => {
@@ -273,11 +281,89 @@ function bootstrapSCLAddIn() {
 
         item.excerpt && e('div', { style:{fontSize:11,color:'#94A3B8',fontStyle:'italic',marginBottom:10} }, '"'+item.excerpt+'"'),
 
+        // Create Task section
+        showTask && e('div', { style:{background:'#F0F4FF',border:'1px solid #C7D2FE',borderRadius:8,padding:'10px',marginBottom:8} },
+          e('div', { style:{fontSize:10,fontWeight:700,color:'#3730A3',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8} }, 'Create Task'),
+          sopOptions.length > 1 && e('div', { style:{marginBottom:6} },
+            e('div', { style:{fontSize:10,color:'#3730A3',fontWeight:600,marginBottom:4} }, 'SOP-recommended tasks:'),
+            ...sopOptions.map((opt,i) => e('button', {
+              key:i,
+              onClick: () => {
+                setTaskText(opt.task);
+                setTaskOwner(opt.owner);
+                const due = new Date();
+                due.setDate(due.getDate() + opt.days);
+                setTaskDue((due.getMonth()+1).toString().padStart(2,'0')+'/'+due.getDate().toString().padStart(2,'0')+'/'+due.getFullYear().toString().slice(2));
+              },
+              style:{display:'block',width:'100%',textAlign:'left',padding:'5px 8px',fontSize:11,
+                     background: taskText===opt.task ? '#E0E7FF' : '#fff',
+                     border:'1px solid '+(taskText===opt.task?'#6366F1':'#E0E7FF'),
+                     borderRadius:5,marginBottom:3,cursor:'pointer'}
+            }, opt.task + ' (' + opt.owner + ', ' + opt.days + 'd)')
+          )),
+          e('input', { value:taskText, onChange:ev=>setTaskText(ev.target.value), placeholder:'Task description...',
+            style:{width:'100%',border:'1px solid '+LINE,borderRadius:6,padding:'5px 8px',fontSize:12,outline:'none',marginBottom:6,boxSizing:'border-box'} }),
+          e('div', { style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:6} },
+            e('input', { value:taskOwner, onChange:ev=>setTaskOwner(ev.target.value), placeholder:'Owner (e.g. SJC)',
+              style:{border:'1px solid '+LINE,borderRadius:6,padding:'5px 8px',fontSize:12,outline:'none'} }),
+            e('input', { value:taskDue, onChange:ev=>setTaskDue(ev.target.value), placeholder:'Due date (MM/DD/YY)',
+              type:'text', style:{border:'1px solid '+LINE,borderRadius:6,padding:'5px 8px',fontSize:12,outline:'none'} })
+          ),
+          e('input', { value:taskNote, onChange:ev=>setTaskNote(ev.target.value), placeholder:'Notes (optional)',
+            style:{width:'100%',border:'1px solid '+LINE,borderRadius:6,padding:'5px 8px',fontSize:12,outline:'none',marginBottom:8,boxSizing:'border-box'} }),
+          e('div', { style:{display:'flex',gap:6} },
+            e('button', {
+              onClick: async () => {
+                if (!taskText.trim()) return;
+                try {
+                  const token = await getGraphToken();
+                  await writeTask({
+                    engId: mid, client: eng?.client||'', engagement: eng?.engagement||'',
+                    task: taskText, owner: taskOwner, due: taskDue, note: taskNote,
+                    source: 'Email: '+item.emailSubject
+                  }, token);
+                  setShowTask(false); setTaskText(''); setTaskOwner(''); setTaskDue(''); setTaskNote('');
+                } catch(err) { alert('Task save failed: ' + err.message); }
+              },
+              style:{background:'#4F46E5',color:'#fff',border:'none',borderRadius:6,padding:'6px 12px',fontSize:12,fontWeight:600,cursor:'pointer'}
+            }, 'Save Task'),
+            e('button', { onClick:()=>setShowTask(false),
+              style:{background:'none',color:'#94A3B8',border:'none',padding:'6px 10px',fontSize:12,cursor:'pointer'} }, 'Cancel')
+          )
+        ),
+
         e('div', { style:{display:'flex',gap:6,alignItems:'center'} },
           e('button', { onClick:()=>onApply(item,{matched_id:mid,statusTo,month,amount},changed), disabled:!canApply,
             style:{background:canApply?GO:'#94A3B8',color:'#fff',border:'none',borderRadius:7,padding:'7px 12px',fontSize:12,fontWeight:700,cursor:canApply?'pointer':'not-allowed'} }, 'Apply'),
           e('button', { onClick:()=>setEditing(v=>!v),
             style:{background:'#fff',color:INK,border:'1px solid '+LINE,borderRadius:7,padding:'7px 10px',fontSize:12,fontWeight:600,cursor:'pointer'} }, editing?'Done editing':'Edit'),
+          e('button', {
+            onClick: () => {
+              // Pre-fill recommended task based on event
+              if (!showTask) {
+                const eng2 = ROSTER.find(x=>x.id===mid);
+                // Find SOP-recommended tasks for this event type
+                const sopMatches = SOP_TASKS.filter(t => t.trigger === item.event_type || t.trigger === item.statusTo);
+                if (sopMatches.length > 0) {
+                  setTaskText(sopMatches[0].task);
+                  setTaskOwner(sopMatches[0].owner);
+                  // Set due date based on SOP days
+                  const due = new Date();
+                  due.setDate(due.getDate() + sopMatches[0].days);
+                  setTaskDue((due.getMonth()+1).toString().padStart(2,'0') + '/' + due.getDate().toString().padStart(2,'0') + '/' + due.getFullYear().toString().slice(2));
+                  // If multiple SOP tasks exist, show a selector
+                  if (sopMatches.length > 1) {
+                    setSopOptions(sopMatches);
+                  }
+                } else {
+                  setTaskText('Follow up on ' + (eng2?.client||'client') + ' - ' + (item.event_type||'update'));
+                  setTaskOwner(eng2?.owner||'JT');
+                }
+              }
+              setShowTask(v=>!v);
+            },
+            style:{background:'#fff',color:'#4F46E5',border:'1px solid #C7D2FE',borderRadius:7,padding:'7px 10px',fontSize:12,fontWeight:600,cursor:'pointer'}
+          }, showTask ? 'Hide task' : '+ Task'),
           e('button', { onClick:onDismiss,
             style:{background:'none',color:'#94A3B8',border:'none',padding:'7px 10px',fontSize:12,cursor:'pointer',marginLeft:'auto'} }, 'Dismiss')
         )
@@ -349,6 +435,32 @@ function bootstrapSCLAddIn() {
         } catch(ex) { setErr('Error: ' + (ex.message||String(ex))); }
         setLoading(false);
       }, [apiKey]);
+
+      const writeTask = async (task, token) => {
+        const searchRes = await fetch("https://graph.microsoft.com/v1.0/search/query", {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: [{ entityTypes: ['driveItem'], query: { queryString: '"AUTOMATION TEST - 260202 Rev Sheet"' }, size: 1 }] })
+        });
+        const searchData = await searchRes.json();
+        const hit = searchData.value?.[0]?.hitsContainers?.[0]?.hits?.[0];
+        if (!hit) throw new Error('Could not find Excel file for task write.');
+        const fileId = hit.resource.id;
+        const driveId = hit.resource.parentReference.driveId;
+
+        const now = new Date();
+        const taskId = 'TSK-' + Date.now().toString().slice(-6);
+        await fetch(
+          `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblTasks/rows`,
+          { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ values: [[
+              taskId, task.engId, task.client, task.engagement,
+              task.task, task.owner, task.due || '',
+              'Medium', 'Open', task.note || '',
+              now.toISOString().slice(0,10), task.source || 'Manual'
+            ]] }) }
+        );
+      };
 
       const writeToExcel = async (entries, token) => {
         const searchRes = await fetch("https://graph.microsoft.com/v1.0/search/query", {
