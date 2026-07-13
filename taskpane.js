@@ -161,6 +161,8 @@ function bootstrapSCLAddIn() {
       const [amount, setAmount] = useState(item.amount==null?'':item.amount);
       const [search, setSearch] = useState('');
       const [sopOptions, setSopOptions] = useState([]);
+      const [taskFilter, setTaskFilter] = useState('');
+      const [ownerFilter, setOwnerFilter] = useState('');
       const [showTask, setShowTask] = useState(false);
       const [taskText, setTaskText] = useState('');
       const [taskOwner, setTaskOwner] = useState('');
@@ -281,54 +283,176 @@ function bootstrapSCLAddIn() {
 
         item.excerpt && e('div', { style:{fontSize:11,color:'#94A3B8',fontStyle:'italic',marginBottom:10} }, '"'+item.excerpt+'"'),
 
-        // Create Task section
-        showTask && e('div', { style:{background:'#F0F4FF',border:'1px solid #C7D2FE',borderRadius:8,padding:'10px',marginBottom:8} },
-          e('div', { style:{fontSize:10,fontWeight:700,color:'#3730A3',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8} }, 'Create Task'),
-          sopOptions.length > 1 && e('div', { style:{marginBottom:6} },
-            e('div', { style:{fontSize:10,color:'#3730A3',fontWeight:600,marginBottom:4} }, 'SOP-recommended tasks:'),
-            ...sopOptions.map((opt,i) => e('button', {
-              key:i,
-              onClick: () => {
-                setTaskText(opt.task);
-                setTaskOwner(opt.owner);
-                const due = new Date();
-                due.setDate(due.getDate() + opt.days);
-                setTaskDue((due.getMonth()+1).toString().padStart(2,'0')+'/'+due.getDate().toString().padStart(2,'0')+'/'+due.getFullYear().toString().slice(2));
-              },
-              style:{display:'block',width:'100%',textAlign:'left',padding:'5px 8px',fontSize:11,
-                     background: taskText===opt.task ? '#E0E7FF' : '#fff',
-                     border:'1px solid '+(taskText===opt.task?'#6366F1':'#E0E7FF'),
-                     borderRadius:5,marginBottom:3,cursor:'pointer'}
-            }, opt.task + ' (' + opt.owner + ', ' + opt.days + 'd)')
-          )),
-          e('input', { value:taskText, onChange:ev=>setTaskText(ev.target.value), placeholder:'Task description...',
-            style:{width:'100%',border:'1px solid '+LINE,borderRadius:6,padding:'5px 8px',fontSize:12,outline:'none',marginBottom:6,boxSizing:'border-box'} }),
-          e('div', { style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:6} },
-            e('input', { value:taskOwner, onChange:ev=>setTaskOwner(ev.target.value), placeholder:'Owner (e.g. SJC)',
-              style:{border:'1px solid '+LINE,borderRadius:6,padding:'5px 8px',fontSize:12,outline:'none'} }),
-            e('input', { value:taskDue, onChange:ev=>setTaskDue(ev.target.value), placeholder:'Due date (MM/DD/YY)',
-              type:'text', style:{border:'1px solid '+LINE,borderRadius:6,padding:'5px 8px',fontSize:12,outline:'none'} })
-          ),
-          e('input', { value:taskNote, onChange:ev=>setTaskNote(ev.target.value), placeholder:'Notes (optional)',
-            style:{width:'100%',border:'1px solid '+LINE,borderRadius:6,padding:'5px 8px',fontSize:12,outline:'none',marginBottom:8,boxSizing:'border-box'} }),
-          e('div', { style:{display:'flex',gap:6} },
-            e('button', {
-              onClick: async () => {
-                if (!taskText.trim()) return;
-                try {
-                  const token = await getGraphToken();
-                  await writeTask({
-                    engId: mid, client: eng?.client||'', engagement: eng?.engagement||'',
-                    task: taskText, owner: taskOwner, due: taskDue, note: taskNote,
-                    source: 'Email: '+item.emailSubject
-                  }, token);
-                  setShowTask(false); setTaskText(''); setTaskOwner(''); setTaskDue(''); setTaskNote('');
-                } catch(err) { alert('Task save failed: ' + err.message); }
-              },
-              style:{background:'#4F46E5',color:'#fff',border:'none',borderRadius:6,padding:'6px 12px',fontSize:12,fontWeight:600,cursor:'pointer'}
-            }, 'Save Task'),
-            e('button', { onClick:()=>setShowTask(false),
-              style:{background:'none',color:'#94A3B8',border:'none',padding:'6px 10px',fontSize:12,cursor:'pointer'} }, 'Cancel')
+        // Create Task section — full width popover panel
+        showTask && e('div', { style:{
+          position:'fixed', top:0, left:0, right:0, bottom:0,
+          background:'rgba(0,0,0,0.35)', zIndex:100,
+          display:'flex', alignItems:'flex-start', justifyContent:'center',
+          paddingTop:'40px'
+        }, onClick: ev => { if(ev.target===ev.currentTarget) setShowTask(false); } },
+          e('div', { style:{
+            background:'#fff', borderRadius:14, padding:'20px 24px',
+            width:'520px', maxWidth:'95vw', maxHeight:'85vh', overflowY:'auto',
+            boxShadow:'0 20px 60px rgba(0,0,0,0.2)',
+            border:'1px solid #E0E7FF'
+          } },
+            // Header
+            e('div', { style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14} },
+              e('div', { style:{fontSize:14,fontWeight:700,color:'#1F3864'} }, 'Create Task'),
+              e('button', { onClick:()=>setShowTask(false),
+                style:{background:'none',border:'none',fontSize:18,color:'#94A3B8',cursor:'pointer',padding:'0 4px'} }, '×')
+            ),
+
+            // SOP recommended tasks (chips)
+            sopOptions.length > 0 && e('div', { style:{marginBottom:12} },
+              e('div', { style:{fontSize:10,color:'#6366F1',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6} },
+                'SOP-recommended tasks'),
+              e('div', { style:{display:'flex',flexDirection:'column',gap:4} },
+                ...sopOptions.map((opt,i) => e('button', {
+                  key:i,
+                  onClick: () => {
+                    setTaskText(opt.task);
+                    setTaskOwner(opt.owner);
+                    setOwnerFilter(opt.owner);
+                    setTaskFilter('');
+                    const due = new Date();
+                    due.setDate(due.getDate() + opt.days);
+                    setTaskDue(due.toISOString().slice(0,10));
+                  },
+                  style:{
+                    textAlign:'left', padding:'7px 10px', fontSize:12,
+                    background: taskText===opt.task ? '#EEF2FF' : '#F8F9FF',
+                    border:'1px solid '+(taskText===opt.task?'#6366F1':'#E0E7FF'),
+                    borderRadius:7, cursor:'pointer', color:'#312E81', lineHeight:'1.4'
+                  }
+                }, e('span',{style:{fontWeight:600}},opt.task),
+                   e('span',{style:{color:'#6366F1',fontSize:10,marginLeft:6}}, opt.owner+' · '+opt.days+'d'))
+              )
+            ),
+
+            // Task description with live search/autocomplete
+            e('div', { style:{marginBottom:12} },
+              e('div', { style:{fontSize:11,fontWeight:600,color:'#475569',marginBottom:4} }, 'Task'),
+              e('div', { style:{position:'relative'} },
+                e('input', {
+                  value:taskText,
+                  onChange: ev => { setTaskText(ev.target.value); setTaskFilter(ev.target.value); },
+                  placeholder:'Type to search SOP tasks or enter custom...',
+                  style:{width:'100%',border:'1px solid '+LINE,borderRadius:8,padding:'7px 10px',fontSize:12,outline:'none',boxSizing:'border-box'}
+                }),
+                taskFilter && taskFilter.length > 1 && e('div', { style:{
+                  position:'absolute', top:'100%', left:0, right:0, zIndex:10,
+                  background:'#fff', border:'1px solid '+LINE, borderRadius:8,
+                  boxShadow:'0 4px 16px rgba(0,0,0,0.1)', maxHeight:180, overflowY:'auto', marginTop:2
+                } },
+                  ...SOP_TASKS.filter(t =>
+                    t.task.toLowerCase().includes(taskFilter.toLowerCase()) ||
+                    t.trigger.toLowerCase().includes(taskFilter.toLowerCase())
+                  ).slice(0,8).map((opt,i) => e('div', {
+                    key:i,
+                    onClick: () => {
+                      setTaskText(opt.task);
+                      setTaskFilter('');
+                      setTaskOwner(opt.owner);
+                      setOwnerFilter(opt.owner);
+                      const due = new Date();
+                      due.setDate(due.getDate() + opt.days);
+                      setTaskDue(due.toISOString().slice(0,10));
+                    },
+                    style:{padding:'8px 12px',fontSize:12,cursor:'pointer',borderBottom:'1px solid #F1F5F9',lineHeight:'1.4'}
+                  },
+                    e('div',{style:{color:'#1e293b'}},opt.task),
+                    e('div',{style:{fontSize:10,color:'#94A3B8',marginTop:2}},opt.trigger+' · '+opt.owner+' · '+opt.days+'d')
+                  ))
+                )
+              )
+            ),
+
+            // Owner + Due Date row
+            e('div', { style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12} },
+              // Owner with datalist autocomplete
+              e('div', null,
+                e('div', { style:{fontSize:11,fontWeight:600,color:'#475569',marginBottom:4} }, 'Owner'),
+                e('div', { style:{position:'relative'} },
+                  e('input', {
+                    value: taskOwner,
+                    onChange: ev => { setTaskOwner(ev.target.value); setOwnerFilter(ev.target.value); },
+                    placeholder: 'JT, SJC, FM, AM...',
+                    list: 'owner-options',
+                    style:{width:'100%',border:'1px solid '+LINE,borderRadius:8,padding:'7px 10px',fontSize:12,outline:'none',boxSizing:'border-box'}
+                  }),
+                  e('datalist', { id:'owner-options' },
+                    e('option',{value:'JT'},'Jennifer Tarsitano'),
+                    e('option',{value:'SJC'},'Sarah-Jane Campbell'),
+                    e('option',{value:'FM'},'Farhad Motiwalla'),
+                    e('option',{value:'AM'},'Ayal Meyers'),
+                    e('option',{value:'JB'},'Jennipher Brown'),
+                  ),
+                  // Dropdown chips for quick select
+                  ownerFilter === '' && e('div', { style:{display:'flex',gap:4,flexWrap:'wrap',marginTop:6} },
+                    ...['JT','SJC','FM','AM','JB'].map(o => e('button', {
+                      key:o,
+                      onClick:()=>{ setTaskOwner(o); setOwnerFilter(o); },
+                      style:{
+                        padding:'3px 10px',fontSize:11,borderRadius:99,cursor:'pointer',
+                        background: taskOwner===o ? '#1F3864' : '#F1F5F9',
+                        color: taskOwner===o ? '#fff' : '#475569',
+                        border:'none', fontWeight: taskOwner===o ? 700 : 400
+                      }
+                    }, o))
+                  )
+                )
+              ),
+              // Due Date — native date picker
+              e('div', null,
+                e('div', { style:{fontSize:11,fontWeight:600,color:'#475569',marginBottom:4} }, 'Due Date'),
+                e('input', {
+                  value: taskDue,
+                  onChange: ev => setTaskDue(ev.target.value),
+                  type: 'date',
+                  style:{width:'100%',border:'1px solid '+LINE,borderRadius:8,padding:'7px 10px',fontSize:12,outline:'none',boxSizing:'border-box',colorScheme:'light'}
+                })
+              )
+            ),
+
+            // Notes — bigger box
+            e('div', { style:{marginBottom:16} },
+              e('div', { style:{fontSize:11,fontWeight:600,color:'#475569',marginBottom:4} }, 'Notes'),
+              e('textarea', {
+                value: taskNote,
+                onChange: ev => setTaskNote(ev.target.value),
+                placeholder: 'Add context, links, or instructions...',
+                rows: 4,
+                style:{width:'100%',border:'1px solid '+LINE,borderRadius:8,padding:'7px 10px',fontSize:12,outline:'none',resize:'vertical',boxSizing:'border-box',fontFamily:'inherit'}
+              })
+            ),
+
+            // Action buttons
+            e('div', { style:{display:'flex',gap:8,justifyContent:'flex-end'} },
+              e('button', { onClick:()=>setShowTask(false),
+                style:{padding:'8px 16px',borderRadius:8,border:'1px solid '+LINE,background:'#fff',color:'#64748B',fontSize:12,fontWeight:600,cursor:'pointer'} },
+                'Cancel'),
+              e('button', {
+                onClick: async () => {
+                  if (!taskText.trim()) return;
+                  try {
+                    const token = await getGraphToken();
+                    await writeTask({
+                      engId: mid, client: eng?.client||'', engagement: eng?.engagement||'',
+                      task: taskText, owner: taskOwner, due: taskDue, note: taskNote,
+                      source: 'Email: '+item.emailSubject
+                    }, token);
+                    setShowTask(false);
+                    setTaskText(''); setTaskOwner(''); setTaskDue(''); setTaskNote('');
+                    setTaskFilter(''); setOwnerFilter(''); setSopOptions([]);
+                  } catch(err) { alert('Task save failed: ' + err.message); }
+                },
+                disabled: !taskText.trim(),
+                style:{padding:'8px 20px',borderRadius:8,border:'none',
+                       background:taskText.trim()?'#4F46E5':'#94A3B8',
+                       color:'#fff',fontSize:12,fontWeight:700,cursor:taskText.trim()?'pointer':'not-allowed'}
+              }, 'Save Task')
+            )
           )
         ),
 
