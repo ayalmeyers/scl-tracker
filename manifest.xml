@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <OfficeApp
   xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -6,7 +6,7 @@
   xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
   xsi:type="MailApp">
 
-  <Id>a1b2c3d4-e5f6-7890-abcd-ef1234567890</Id>
+  <Id>ce8026f5-9524-406b-b492-43957144dc70</Id>
   <Version>1.0.0.0</Version>
   <ProviderName>SCL</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
@@ -15,20 +15,25 @@
   <IconUrl DefaultValue="https://scl-tracker.vercel.app/icon-80.png"/>
   <HighResolutionIconUrl DefaultValue="https://scl-tracker.vercel.app/icon-80.png"/>
   <SupportUrl DefaultValue="https://scl-tracker.vercel.app"/>
+  
   <AppDomains>
-    <AppDomain>https://api.anthropic.com</AppDomain>
+    <AppDomain>api.anthropic.com</AppDomain>
+    <AppDomain>graph.microsoft.com</AppDomain>
+    <AppDomain>login.microsoftonline.com</AppDomain>
+    <AppDomain>alcdn.msauth.net</AppDomain>
+    <AppDomain>cdnjs.cloudflare.com</AppDomain>
   </AppDomains>
-
+  
   <Hosts>
     <Host Name="Mailbox"/>
   </Hosts>
-
+  
   <Requirements>
     <Sets>
       <Set Name="Mailbox" MinVersion="1.1"/>
     </Sets>
   </Requirements>
-
+  
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
@@ -37,34 +42,30 @@
       </DesktopSettings>
     </Form>
   </FormSettings>
-
-  <Permissions>ReadItem</Permissions>
+  
+  <Permissions>ReadWriteItem</Permissions>
+  
   <Rule xsi:type="RuleCollection" Mode="Or">
     <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read"/>
   </Rule>
+  
+  <DisableEntityHighlighting>false</DisableEntityHighlighting>
 
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
     <Requirements>
-      <bt:Sets>
-        <bt:Set Name="Mailbox" MinVersion="1.3"/>
+      <bt:Sets DefaultMinVersion="1.3">
+        <bt:Set Name="Mailbox"/>
       </bt:Sets>
     </Requirements>
-
     <Hosts>
       <Host xsi:type="MailHost">
         <DesktopFormFactor>
           <FunctionFile resid="Commands.Url"/>
-
           <ExtensionPoint xsi:type="MessageReadCommandSurface">
             <OfficeTab id="TabDefault">
               <Group id="msgReadGroup">
                 <Label resid="GroupLabel"/>
-                <Icon>
-                  <bt:Image size="16" resid="Icon.16x16"/>
-                  <bt:Image size="32" resid="Icon.32x32"/>
-                  <bt:Image size="80" resid="Icon.80x80"/>
-                </Icon>
-
+                
                 <Control xsi:type="Button" id="msgReadOpenPaneButton">
                   <Label resid="TaskpaneButton.Label"/>
                   <Supertip>
@@ -77,18 +78,16 @@
                     <bt:Image size="80" resid="Icon.80x80"/>
                   </Icon>
                   <Action xsi:type="ShowTaskpane">
-                    <TaskpaneId>ButtonId1</TaskpaneId>
                     <SourceLocation resid="Taskpane.Url"/>
                   </Action>
                 </Control>
-
+                
               </Group>
             </OfficeTab>
           </ExtensionPoint>
         </DesktopFormFactor>
       </Host>
     </Hosts>
-
     <Resources>
       <bt:Images>
         <bt:Image id="Icon.16x16" DefaultValue="https://scl-tracker.vercel.app/icon-16.png"/>
