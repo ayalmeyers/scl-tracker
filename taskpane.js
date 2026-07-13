@@ -386,7 +386,7 @@ function bootstrapSCLAddIn() {
                     e('option',{value:'SJC'},'Sarah-Jane Campbell'),
                     e('option',{value:'FM'},'Farhad Motiwalla'),
                     e('option',{value:'AM'},'Ayal Meyers'),
-                    e('option',{value:'JB'},'Jennipher Brown'),
+                    e('option',{value:'JB'},'Jennipher Brown')
                   ),
                   // Dropdown chips for quick select
                   ownerFilter === '' && e('div', { style:{display:'flex',gap:4,flexWrap:'wrap',marginTop:6} },
