@@ -6,12 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SCL Revenue Tracker</title>
   
-  <!-- Office JavaScript API -->
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   
-  <!-- Robust, production-grade CDNs (rarely blocked by corporate firewalls) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="react.production.min.js"></script>
+  <script src="react-dom.production.min.js"></script>
   
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -22,7 +20,6 @@
 <body>
   <div id="root"></div>
   
-  <!-- Load your script natively—bypassing Babel and CSP unsafe-eval blocks! -->
   <script src="taskpane.js" defer></script>
 </body>
 </html>
