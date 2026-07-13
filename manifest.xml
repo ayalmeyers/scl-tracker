@@ -7,7 +7,7 @@
   xsi:type="MailApp">
 
   <Id>ce8026f5-9524-406b-b492-43957144dc70</Id>
-  <Version>1.0.0.0</Version>
+  <Version>1.0.1.0</Version>
   <ProviderName>SCL</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="SCL Revenue Tracker"/>
@@ -65,7 +65,6 @@
             <OfficeTab id="TabDefault">
               <Group id="msgReadGroup">
                 <Label resid="GroupLabel"/>
-                
                 <Control xsi:type="Button" id="msgReadOpenPaneButton">
                   <Label resid="TaskpaneButton.Label"/>
                   <Supertip>
@@ -81,7 +80,6 @@
                     <SourceLocation resid="Taskpane.Url"/>
                   </Action>
                 </Control>
-                
               </Group>
             </OfficeTab>
           </ExtensionPoint>
