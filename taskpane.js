@@ -491,6 +491,7 @@ function bootstrapSCLAddIn() {
           e('button', { onClick:onDismiss,
             style:{background:'none',color:'#94A3B8',border:'none',padding:'7px 10px',fontSize:12,cursor:'pointer',marginLeft:'auto'} }, 'Dismiss')
         )
+      )
       );
     };
 
