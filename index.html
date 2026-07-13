@@ -5,10 +5,14 @@
   <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SCL Revenue Tracker</title>
+  
+  <!-- Office JavaScript API -->
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Robust, production-grade CDNs (rarely blocked by corporate firewalls) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; background: #F6F7F9; color: #1A1D23; }
@@ -17,6 +21,8 @@
 </head>
 <body>
   <div id="root"></div>
-  <script src="taskpane.js" type="text/babel" data-type="module"></script>
+  
+  <!-- Load your script natively—bypassing Babel and CSP unsafe-eval blocks! -->
+  <script src="taskpane.js" defer></script>
 </body>
 </html>
