@@ -6,8 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SCL Revenue Tracker</title>
   
+  <!-- Office JavaScript API -->
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   
+  <!-- Robust corporate CDNs -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   
@@ -18,13 +20,17 @@
   </style>
 </head>
 <body>
+  <!-- Bulletproof Diagnostic Safety Net -->
   <script>
     window.onerror = function (message, source, lineno, colno, error) {
       const errDiv = document.createElement('div');
-      errDiv.style = 'padding:16px;background:#FEF2F2;color:#B91C1C;font-family:sans-serif;border:1px solid #FCA5A5;margin:12px;border-radius:8px;font-size:12px;';
-      errDiv.innerHTML = '<h4 style="margin:0 0 6px 0;font-size:13px;">Add-in Execution Error</h4>' +
-                         '<p style="margin:0 0 4px 0;"><b>Details:</b> ' + message + '</p>' +
-                         '<p style="margin:0;color:#7F1D1D;font-size:11px;">Line ' + lineno + ' inside ' + source.split('/').pop() + '</p>';
+      errDiv.style = 'padding:16px;background:#FEF2F2;color:#B91C1C;font-family:sans-serif;border:1px solid #FCA5A5;margin:12px;border-radius:8px;font-size:12px;position:relative;z-index:99999;';
+      
+      const file = source ? source.split('/').pop() : 'Unknown Source';
+      
+      errDiv.innerHTML = '<h4 style="margin:0 0 6px 0;font-size:13px;">Add-in Load Exception</h4>' +
+                         '<p style="margin:0 0 4px 0;"><b>Error:</b> ' + message + '</p>' +
+                         '<p style="margin:0;color:#7F1D1D;font-size:11px;">File: ' + file + ' | Line: ' + (lineno || 'N/A') + '</p>';
       document.body.insertBefore(errDiv, document.body.firstChild);
       return false;
     };
@@ -32,6 +38,7 @@
 
   <div id="root"></div>
   
+  <!-- Main application script loaded natively without Babel blocks -->
   <script src="taskpane.js" defer></script>
 </body>
 </html>
