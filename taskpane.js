@@ -60,7 +60,7 @@ function bootstrapSCLAddIn() {
       const driveId = fileHit.resource.parentReference?.driveId;
       if (!driveId) throw new Error("File found but parent library path could not be extracted.");
 
-      const hdrsRes = await fetch(`https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/columns`, { headers: { Authorization: 'Bearer ' + token } });
+      const hdrsRes = await fetch('https://graph.microsoft.com/v1.0/drives/'+driveId+'/items/'+fileId+'/workbook/tables/tblRevenue/columns', { headers: { Authorization: 'Bearer ' + token } });
       const hdrsData = await hdrsRes.json();
       if (hdrsData.error) throw new Error('Header Error: ' + hdrsData.error.message);
       const colMap = {};
@@ -78,10 +78,10 @@ function bootstrapSCLAddIn() {
       const idxStatus = colMap['Status'] !== undefined ? colMap['Status'] : colMap['status'];
 
       if (idxId === undefined || idxClient === undefined || idxEng === undefined) {
-        throw new Error(`Missing headers. Found: [${rawHeaders.join(', ')}]`);
+        throw new Error('Missing headers. Found: ['+rawHeaders.join(', ')+']');
       }
 
-      const rowsRes = await fetch(`https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/rows`, { headers: { Authorization: 'Bearer ' + token } });
+      const rowsRes = await fetch('https://graph.microsoft.com/v1.0/drives/'+driveId+'/items/'+fileId+'/workbook/tables/tblRevenue/rows', { headers: { Authorization: 'Bearer ' + token } });
       const rowsData = await rowsRes.json();
       if (rowsData.error) throw new Error('Could not read tblRevenue: ' + rowsData.error.message);
 
@@ -106,7 +106,7 @@ function bootstrapSCLAddIn() {
 
       if (roster.length === 0) {
         const firstRowValues = rawRowsArray.length > 0 ? JSON.stringify(rawRowsArray[0].values[0]) : "EMPTY TABLE";
-        throw new Error(`Read ${rawRowsArray.length} rows but 0 parsed. ID col index: ${idxId}. First row: ${firstRowValues}`);
+        throw new Error('Read '+rawRowsArray.length+' rows but 0 parsed. ID col index: '+idxId+'. First row: '+firstRowValues);
       }
       return roster;
     };
@@ -124,7 +124,7 @@ function bootstrapSCLAddIn() {
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 800, system: sys, messages: [{ role: 'user', content: user }] })
       });
-      if (!res.ok) { const t = await res.text(); throw new Error(`Server Error (${res.status}): ${t.substring(0,120)}`); }
+      if (!res.ok) { const t = await res.text(); throw new Error('Server Error ('+res.status+'): '+t.substring(0,120)); }
       const data = await res.json();
       if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
       let txt = (data.content||[]).filter(b => b.type==='text').map(b => b.text).join('');
@@ -576,7 +576,7 @@ function bootstrapSCLAddIn() {
         const now = new Date();
         const taskId = 'TSK-' + Date.now().toString().slice(-6);
         await fetch(
-          `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblTasks/rows`,
+          'https://graph.microsoft.com/v1.0/drives/'+driveId+'/items/'+fileId+'/workbook/tables/tblTasks/rows',
           { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
             body: JSON.stringify({ values: [[
               taskId, task.engId, task.client, task.engagement,
@@ -599,7 +599,7 @@ function bootstrapSCLAddIn() {
         const fileId = hit.resource.id;
         const driveId = hit.resource.parentReference.driveId;
 
-        const hdrsRes = await fetch(`https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/columns`, { headers: { Authorization: 'Bearer ' + token } });
+        const hdrsRes = await fetch('https://graph.microsoft.com/v1.0/drives/'+driveId+'/items/'+fileId+'/workbook/tables/tblRevenue/columns', { headers: { Authorization: 'Bearer ' + token } });
         const hdrsData = await hdrsRes.json();
         const localColMap = {};
         (hdrsData.value || []).forEach(c => {
@@ -607,7 +607,7 @@ function bootstrapSCLAddIn() {
           localColMap[c.name.toLowerCase().replace(/[\s_\-]/g, '')] = c.index;
         });
 
-        const rowsRes = await fetch(`https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/rows`, { headers: { Authorization: 'Bearer ' + token } });
+        const rowsRes = await fetch('https://graph.microsoft.com/v1.0/drives/'+driveId+'/items/'+fileId+'/workbook/tables/tblRevenue/rows', { headers: { Authorization: 'Bearer ' + token } });
         const rowsData = await rowsRes.json();
         const rows = rowsData.value || [];
         const eidCol = localColMap['EngagementID'] !== undefined ? localColMap['EngagementID'] : localColMap['engagementid'];
@@ -624,7 +624,7 @@ function bootstrapSCLAddIn() {
           if (colIdx === undefined) { results.push({ id: entry.id, ok: false, err: 'Column not found: ' + entry.field }); continue; }
 
           const patchRes = await fetch(
-            `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblRevenue/rows/itemAt(index=${rowIdx})`,
+            'https://graph.microsoft.com/v1.0/drives/'+driveId+'/items/'+fileId+'/workbook/tables/tblRevenue/rows/itemAt(index='+rowIdx+')',
             { method: 'PATCH', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
               body: JSON.stringify({ values: [rows[rowIdx].values[0].map((v, i) => i === colIdx ? entry.to : v)] }) }
           );
@@ -632,7 +632,7 @@ function bootstrapSCLAddIn() {
 
           try {
             await fetch(
-              `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/workbook/tables/tblChangeLog/rows`,
+              'https://graph.microsoft.com/v1.0/drives/'+driveId+'/items/'+fileId+'/workbook/tables/tblChangeLog/rows',
               { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ values: [[
                   entry.date,
@@ -720,7 +720,7 @@ function bootstrapSCLAddIn() {
                   e('button', {
                     onClick:()=>{
                       const h='Date,Time,ID,Client,Engagement,Field,From,To,Confidence,Edited,Email Subject,Email Sender,Claude Reasoning,Email Excerpt';
-                      const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+                      const esc=v=>'"'+String(v||'').replace(/"/g,'""')+'"';
                       const rows=[...log].reverse().map(entry=>[entry.date,entry.time,entry.id,entry.client,entry.engagement,entry.field,entry.from,entry.to,entry.confidence,entry.edited?'yes':'no',entry.emailSubject||'',entry.emailFrom||'',entry.reasoning||'',entry.excerpt||''].map(esc).join(','));
                       const b=new Blob([[h,...rows].join('\n')],{type:'text/csv'});
                       const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='SCL_ChangeLog.csv';a.click();
